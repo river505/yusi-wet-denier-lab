@@ -172,7 +172,7 @@ function serializeLook(state) {
   const amplitudes=MOTION_KEYS.map(name=>clampAmplitude(state.motionAmplitudes?.[name])).join('-');
   return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs,
     encodeColor(state.skinTone), state.skinBrightness, amplitudes,
-    state.footPitch.map(clampFootPitch).join(',')].join('~');
+    state.footPitch.map(clampFootPitch).join(','),state.legSpacing||100].join('~');
 }
 
 function deserializeLook(hash) {
@@ -180,7 +180,7 @@ function deserializeLook(hash) {
   if (!serialized) return null;
   const [version, pose, scene, backdrop, left, right = left,
     tone = 'original', brightness = '100', amps='100-100-100-100-100',
-    pitches='0,0'] = serialized.split('~');
+    pitches='0,0', spacing='100'] = serialized.split('~');
   const pitchParts=pitches.split(',');
   const footPitch=[clampFootPitch(pitchParts[0]),clampFootPitch(pitchParts[1])];
   const ampParts=amps.split('-');
@@ -216,6 +216,7 @@ function deserializeLook(hash) {
       ? Math.max(70,Math.min(130,Number(brightness))) : 100,
     motionAmplitudes,
     footPitch,
+    legSpacing:Math.max(75,Math.min(155,Number(spacing)||100)),
   };
 }
 
@@ -225,7 +226,7 @@ export function initUI(engine) {
     mode: 'water', rain: false, slow: false, sound: true, legs: presetLegs(0),
     skinTone: 'original', skinBrightness: 100,
     motionAmplitudes: defaultAmplitudes(),
-    footPitch:[0,0], footTarget:'both',
+    footPitch:[0,0], footTarget:'both', legSpacing:100,
   };
   const body = document.body;
   const view = get('#view');
@@ -242,6 +243,9 @@ export function initUI(engine) {
   const sceneNote = note('');
   scenes.replaceChildren(sceneChoices, backdropRow, sceneNote);
 
+  const legSpacingSlider=element('input',{id:'legSpacingSlider',type:'range',
+    min:'75',max:'155',step:'5',value:'100','aria-label':'双腿自然间距'});
+  const legSpacingValue=element('output',{id:'legSpacingValue'},['100%']);
   const footPitchSlider=element('input',{id:'footPitchSlider',type:'range',min:'-35',
     max:'35',step:'1',value:'0','aria-label':'脚面相对小腿的踝关节倾斜角'});
   const footPitchValue=element('output',{id:'footPitchValue'},['0°']);
@@ -291,6 +295,7 @@ export function initUI(engine) {
       row('坐姿',choices('pose',SEATED_POSES)),
       row('躺姿',choices('pose',LYING_POSES)),
       row('动态',choices('pose',MOTION_POSES)),
+      row('双腿间距',element('div',{class:'foot-pitch'},[legSpacingSlider,legSpacingValue])),
       row('踝关节', footPitchTargets),
       row('脚面俯仰',element('div',{class:'foot-pitch'},[
         footPitchSlider,footPitchValue,
@@ -418,6 +423,8 @@ export function initUI(engine) {
     syncChoices(materials, 'skinTone', state.skinTone);
     const lightnessOutput = get('#skinBrightnessValue');
     if (lightnessOutput) lightnessOutput.textContent = state.skinBrightness + '%';
+    legSpacingSlider.value=String(state.legSpacing);
+    legSpacingValue.textContent=state.legSpacing+'%';
     syncChoices(materials, 'footTarget', state.footTarget);
     footPitchSlider.value=String(state.footPitch[state.footTarget==='1'?1:0]);
     footPitchValue.textContent=footPitchSlider.value+'°';
@@ -638,6 +645,8 @@ export function initUI(engine) {
       state.skinBrightness = look.skinBrightness;
       state.motionAmplitudes=look.motionAmplitudes;
       state.footPitch=look.footPitch;
+      state.legSpacing=look.legSpacing;
+      engine.setLegSpacing(state.legSpacing);
       engine.setFootPitch(state.footPitch);
       get('#skinBrightness').value = String(state.skinBrightness);
       engine.setSkinAppearance({tone: state.skinTone, brightness: state.skinBrightness});
@@ -766,6 +775,11 @@ export function initUI(engine) {
     engine.setFootPitch(state.footPitch);
     syncWardrobe();
   }
+  legSpacingSlider.addEventListener('input',()=>{
+    state.legSpacing=Math.max(75,Math.min(155,Number(legSpacingSlider.value)||100));
+    legSpacingValue.textContent=state.legSpacing+'%';
+    engine.setLegSpacing(state.legSpacing);
+  });
   footPitchSlider.addEventListener('input',()=>setFootPitchValue(footPitchSlider.value));
   get('#footPitchReset').addEventListener('click',()=>setFootPitchValue(0));
   motionToggle.addEventListener('click',()=>{
@@ -904,6 +918,7 @@ export function initUI(engine) {
   engine.setScene(state.scene, state.backdrop);
   engine.setPose(state.pose);
   engine.setFootPitch(state.footPitch);
+  engine.setLegSpacing(state.legSpacing);
   engine.setSkinAppearance({tone: state.skinTone,brightness: state.skinBrightness});
   applyMaterial();
   setMode(state.mode, false);
