@@ -2,7 +2,7 @@ import * as THREE from '../vendor/three.module.js';
 import { loadMesh } from './mesh.js';
 import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragment, skinVertex, stageFragment, stageVertex, panoramaVertex, outlineVertex, outlineFragment } from './shaders.js';
 import { initUI } from './ui.js';
-import { applyPose, isMotionPose, isSeatedPose, isLyingPose, clearMotionCache } from './pose.js';
+import { applyPose, isMotionPose, isSeatedPose, isLyingPose, isAdjustableStandingPose, clearMotionCache } from './pose.js';
 import { createSpatialEnvironment } from './environment.js';
 
 const canvas = document.getElementById('view');
@@ -35,41 +35,126 @@ const defaultLeg = { length: 'thigh', cuff: 'lace', material: 'sheer', denier: 4
 const restTarget = new THREE.Vector3(0, .43, .035);
 const maxStains = 24;
 const poses = ['single', 'together', 'step', 'crossed', 'tiptoe', 'point', 'pigeon',
-  'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick',
+  'bendForward', 'bendTiptoe', 'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick',
   'lieFlat', 'lieBent', 'lieCrossLeft', 'lieCrossRight', 'lieSideLeft', 'lieSideRight'];
 
 function createSound() {
-  let context;
-  let noise;
-  let enabled = true;
-  return {
-    setEnabled(value) { enabled = value; },
-    play(strength = 1) {
-      if (!enabled || !window.AudioContext) return;
-      context ??= new AudioContext();
-      if (context.state === 'suspended') context.resume().catch(() => {});
-      if (!noise) {
-        noise = context.createBuffer(1, context.sampleRate * .55, context.sampleRate);
-        const samples = noise.getChannelData(0);
-        for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+  // Web Audio synthesis follows the original GitHub splash sound; rain and
+  // wiping use the same noise source family, with separate gentle envelopes.
+  const AudioAPI=window.AudioContext||window.webkitAudioContext;
+  let context,noise,rainNoise,master,rainSource,rainGain;
+  let enabled=true,raining=false;
+
+  function ensureAudio() {
+    if(!enabled||!AudioAPI)return null;
+    try {
+      if(!context) {
+        context=new AudioAPI();
+        master=context.createGain();
+        master.gain.value=1;
+        master.connect(context.destination);
+        noise=context.createBuffer(1,Math.ceil(context.sampleRate*.55),context.sampleRate);
+        const data=noise.getChannelData(0);
+        for(let i=0;i<data.length;i++)data[i]=Math.random()*2-1;
+        rainNoise=context.createBuffer(1,Math.ceil(context.sampleRate*1.8),context.sampleRate);
+        const rainData=rainNoise.getChannelData(0);
+        for(let i=0;i<rainData.length;i++)rainData[i]=Math.random()*2-1;
+        const seam=Math.floor(context.sampleRate*.025);
+        for(let i=0;i<seam;i++) {
+          const w=i/seam,at=rainData.length-seam+i;
+          rainData[at]=rainData[at]*(1-w)+rainData[i]*w;
+        }
       }
-      const source = context.createBufferSource();
-      const filter = context.createBiquadFilter();
-      const gain = context.createGain();
-      const now = context.currentTime;
-      source.buffer = noise;
-      source.playbackRate.value = .82 + Math.random() * .42;
-      filter.type = 'bandpass';
-      filter.Q.value = .56;
-      filter.frequency.setValueAtTime(2900, now);
-      filter.frequency.exponentialRampToValueAtTime(640, now + .29);
-      gain.gain.setValueAtTime(.001, now);
-      gain.gain.linearRampToValueAtTime(.22 * strength, now + .016);
-      gain.gain.exponentialRampToValueAtTime(.001, now + .30);
-      source.connect(filter).connect(gain).connect(context.destination);
-      source.start();
-      source.stop(now + .33);
+      if(context.state==='suspended')context.resume().catch(()=>{});
+      return context;
+    }catch(error) {
+      console.warn('Audio not available',error);
+      return null;
+    }
+  }
+
+  function transient(kind,strength=1) {
+    const ctx=ensureAudio();
+    if(!ctx)return;
+    const source=ctx.createBufferSource();
+    const filter=ctx.createBiquadFilter();
+    const gain=ctx.createGain();
+    const now=ctx.currentTime;
+    source.buffer=noise;
+    if(kind==='wipe') {
+      source.playbackRate.value=.68;
+      filter.type='lowpass';
+      filter.frequency.setValueAtTime(1400,now);
+      filter.frequency.exponentialRampToValueAtTime(430,now+.33);
+      gain.gain.setValueAtTime(.001,now);
+      gain.gain.linearRampToValueAtTime(.07*strength,now+.035);
+      gain.gain.exponentialRampToValueAtTime(.001,now+.38);
+    }else{
+      // The original splash timbre is preserved.
+      source.playbackRate.value=.82+Math.random()*.42;
+      filter.type='bandpass';
+      filter.Q.value=.56;
+      filter.frequency.setValueAtTime(2900,now);
+      filter.frequency.exponentialRampToValueAtTime(640,now+.29);
+      gain.gain.setValueAtTime(.001,now);
+      gain.gain.linearRampToValueAtTime(.22*strength,now+.016);
+      gain.gain.exponentialRampToValueAtTime(.001,now+.30);
+    }
+    source.connect(filter).connect(gain).connect(master);
+    source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+    source.start(now);
+    source.stop(now+(kind==='wipe'?.41:.33));
+  }
+
+  function stopRain() {
+    if(!rainSource)return;
+    const source=rainSource,gain=rainGain;
+    rainSource=null;rainGain=null;
+    const now=context.currentTime;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setTargetAtTime(0,now,.035);
+    try{source.stop(now+.18);}catch{}
+  }
+
+  function startRain() {
+    if(!enabled||!raining||rainSource)return;
+    const ctx=ensureAudio();
+    if(!ctx)return;
+    const source=ctx.createBufferSource();
+    const filter=ctx.createBiquadFilter();
+    const gain=ctx.createGain();
+    const now=ctx.currentTime;
+    source.buffer=rainNoise;
+    source.loop=true;
+    source.playbackRate.value=.94;
+    filter.type='bandpass';
+    filter.frequency.value=1050;
+    filter.Q.value=.38;
+    gain.gain.setValueAtTime(.001,now);
+    gain.gain.linearRampToValueAtTime(.024,now+.4);
+    source.connect(filter).connect(gain).connect(master);
+    source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+    rainSource=source;rainGain=gain;
+    source.start(now);
+  }
+
+  return {
+    setEnabled(value) {
+      enabled=Boolean(value);
+      if(!enabled) {
+        stopRain();
+        if(master)master.gain.setTargetAtTime(0,context.currentTime,.012);
+      }else{
+        const ctx=ensureAudio();
+        if(ctx) {
+          master.gain.setTargetAtTime(1,ctx.currentTime,.012);
+          startRain();
+        }
+      }
     },
+    setRain(value) {raining=Boolean(value);if(raining)startRain();else stopRain();},
+    play(strength=1) {transient('splash',strength);},
+    dry() {transient('wipe',1);},
   };
 }
 
@@ -688,6 +773,7 @@ function createEngine({ stocking }) {
   }
 
   function dry() {
+    sound.dry();
     for (const model of models) {
       for (const mark of model.cloth.material.uniforms.stains.value) mark.w = 0;
     }
@@ -923,12 +1009,22 @@ function createEngine({ stocking }) {
       if(Math.abs(next-motionAmplitude)<.0001)return;
       motionAmplitude=next;
       clearMotionCache();
-      if(isMotionPose(pose))placePose(motionClock*(motionHz[pose]||1));
+      if(isMotionPose(pose)||isAdjustableStandingPose(pose)){
+        placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
+      }
+      if(isAdjustableStandingPose(pose)){
+        const old=shadowCache.get(pose);
+        const fresh=bakeFloorShadow(models);
+        shadowCache.set(pose,fresh);
+        floorShade.material.map=fresh;
+        floorShade.material.needsUpdate=true;
+        if(old&&old!==fresh)old.dispose();
+      }
     },
     setMotionPlaying(value) { motionPlaying=Boolean(value); },
     setMotionSpeed(value) { motionSpeed=THREE.MathUtils.clamp(Number(value)||1,.5,2); },
     setMode(value) { mode = value; lastInput = performance.now(); },
-    setRain(value) { rain = value; },
+    setRain(value) { rain = value; sound.setRain(rain); },
     setSlow(value) { slow = value; },
     async present() {
       updateCamera(.85);
