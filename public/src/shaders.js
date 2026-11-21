@@ -182,6 +182,9 @@ export const skinFragment = /* glsl */`
   // Recessed grooves and restrained nail highlights supplement the existing
   // five-toe geometry, without placing floating stickers on the feet.
   float toeGrooves(vec3 p) {
+    // Branch out for the whole calf/thigh: toe Gaussian detail is evaluated
+    // only on the tiny foot-tip region, avoiding 4 exps per leg fragment.
+    if (p.y > .075 || p.z < .145) return 0.;
     float dorsal = smoothstep(.014,.027,p.y) * (1.-smoothstep(.044,.061,p.y));
     float forward = smoothstep(.156,.186,p.z);
     float groove = 0.;
@@ -193,6 +196,7 @@ export const skinFragment = /* glsl */`
     return dorsal*forward*groove;
   }
   float toeNailDetail(vec3 p) {
+    if (p.y > .065 || p.z < .16) return 0.;
     float dorsal = smoothstep(.017,.027,p.y)*(1.-smoothstep(.042,.053,p.y));
     float nail = 0.;
     for (int i=0; i<5; i++) {
@@ -281,6 +285,9 @@ export const fabricFragment = /* glsl */`
   varying vec3 eyeDirection;
 
   float toeGrooves(vec3 p) {
+    // Branch out for the whole calf/thigh: toe Gaussian detail is evaluated
+    // only on the tiny foot-tip region, avoiding 4 exps per leg fragment.
+    if (p.y > .075 || p.z < .145) return 0.;
     float dorsal = smoothstep(.014,.027,p.y)*(1.-smoothstep(.044,.061,p.y));
     float forward = smoothstep(.156,.186,p.z);
     float groove = 0.;
