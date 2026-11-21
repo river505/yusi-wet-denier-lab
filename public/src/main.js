@@ -570,6 +570,7 @@ function createEngine({ stocking }) {
   let rainClock = 0;
   let playClock = 0;
   let motionClock = 0, lastMotionUpdate = -Infinity;
+  let lastGaitImpact=-1;
   let motionPlaying = true, motionSpeed = 1, motionAmplitude = 1;
   let footMotion={lateral:1,forward:1,heel:1};
   let legMorph={length:1,height:1,calf:1,thigh:1};
@@ -960,16 +961,22 @@ function createEngine({ stocking }) {
     }
   }
 
-  function rippleAt(position) {
-    if (ripples.length >= 28) return;
-    const mesh = new THREE.Mesh(rimGeometry, new THREE.MeshBasicMaterial({
-      color: '#f7f3fd', transparent: true, opacity: .60, depthWrite: false, side: THREE.DoubleSide,
-    }));
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(position.x, .003, position.z);
-    mesh.scale.setScalar(.013);
-    world.add(mesh);
-    ripples.push({ mesh, age: 0 });
+  function rippleAt(position,impact=false,running=false){
+    const count=impact?2:1;
+    for(let i=0;i<count;i++){
+      if(ripples.length>=34)break;
+      const mesh=new THREE.Mesh(rimGeometry,new THREE.MeshBasicMaterial({
+        color:impact?(environment==='street'?'#a6dbe8':'#d2eef6'):'#d7e9f5',
+        transparent:true,opacity:impact?.72:.48,
+        depthWrite:false,side:THREE.DoubleSide,
+      }));
+      mesh.rotation.x=-Math.PI/2;
+      mesh.position.set(position.x,.003+i*.0004,position.z);
+      mesh.scale.setScalar(impact?(running?.021:.017):.013);
+      mesh.renderOrder=-1;
+      world.add(mesh);
+      ripples.push({mesh,age:-i*.095,impact,running});
+    }
   }
 
   function spawnDrops(point, amount, power, attached) {
@@ -1051,6 +1058,40 @@ function createEngine({ stocking }) {
     ripples.length = 0;
   }
 
+  function updateGaitFootsteps(){
+    // A full gait cycle has two ground contacts. Beat 0: supporting right;
+    // beat 1: incoming left. Trigger on phase crossings, never every frame.
+    if(!rain||!motionPlaying||(pose!=='walk'&&pose!=='run')||
+       panelCamera.suspended||belowGround){
+      lastGaitImpact=-1;
+      return;
+    }
+    const beat=Math.floor(motionClock*(motionHz[pose]||1)*2);
+    if(lastGaitImpact<0){lastGaitImpact=beat;return;}
+    if(beat===lastGaitImpact)return;
+    lastGaitImpact=beat;
+    const leg=beat%2===1?0:1;
+    const {group,cloth}=models[leg];
+    if(!group.visible)return;
+    const position=cloth.geometry.attributes.position;
+    const worldPoint=new THREE.Vector3(),best=new THREE.Vector3();
+    let lowest=Infinity;
+    // Sample the actual posed sole, not the fixed hip or a fake footprint.
+    // The rest-vertex indices remain valid as all poses share the GLB.
+    for(const index of gaitSoleProbes){
+      worldPoint.set(position.getX(index),position.getY(index),
+        position.getZ(index));
+      group.localToWorld(worldPoint);
+      if(worldPoint.y<lowest){lowest=worldPoint.y;best.copy(worldPoint);}
+    }
+    if(lowest>.095)return;
+    const running=pose==='run';
+    best.y=.012;
+    rippleAt(best,true,running);
+    spawnDrops(best,running?9:5,running?.37:.23,false);
+    sound.wetFootstep(running,leg);
+  }
+
   function updateWater(delta) {
     rainClock += delta;
     if (rain && rainClock > .052) {
@@ -1081,9 +1122,12 @@ function createEngine({ stocking }) {
     for (let i = ripples.length - 1; i >= 0; i--) {
       const ring = ripples[i];
       ring.age += delta;
-      ring.mesh.scale.setScalar(.012 + ring.age * .16);
-      ring.mesh.material.opacity = .56 * Math.max(0, 1 - ring.age * 1.58);
-      if (ring.age > .65) {
+      const age=Math.max(0,ring.age);
+      const speed=ring.impact?(ring.running?.27:.20):.16;
+      ring.mesh.scale.setScalar((ring.impact?.016:.012)+age*speed);
+      ring.mesh.material.opacity=(ring.impact?.69:.48)*
+        Math.max(0,1-age*(ring.impact?1.25:1.58));
+      if (ring.age > (ring.impact?.78:.65)) {
         world.remove(ring.mesh);
         ring.mesh.material.dispose();
         ripples.splice(i, 1);
@@ -1117,6 +1161,7 @@ function createEngine({ stocking }) {
         splash(pointer.x, pointer.y, true);
       }
     }
+    updateGaitFootsteps();
     updateWater(dt * (slow ? .20 : 1));
     renderer.render(world, camera);
   }
@@ -1326,7 +1371,11 @@ function createEngine({ stocking }) {
     setMotionPlaying(value) { motionPlaying=Boolean(value); },
     setMotionSpeed(value) { motionSpeed=THREE.MathUtils.clamp(Number(value)||1,.5,2); },
     setMode(value) { mode = value; lastInput = performance.now(); },
-    setRain(value) { rain = value; sound.setRain(rain); },
+    setRain(value){
+      rain=Boolean(value);
+      lastGaitImpact=-1;
+      sound.setRain(rain);
+    },
     setSlow(value) { slow = value; },
     async present() {
       updateCamera(.85);
