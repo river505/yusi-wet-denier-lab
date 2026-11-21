@@ -12,22 +12,29 @@ const POSES = {
   tiptoeShake:'踮脚抖腿',bendTiptoeShake:'屈膝踮脚抖腿',
   pigeonTiptoeShake:'内八踮脚抖腿',
   stepPoint:'一前一后足尖点地',stepPointShake:'一前一后足尖点地抖腿',
+  pigeonShake:'内八抖腿',stepShake:'一前一后抖腿',
 };
 const STANDING_POSES={
   ...Object.fromEntries(Object.entries(POSES).slice(0,9)),
   tiptoeShake:POSES.tiptoeShake,bendTiptoeShake:POSES.bendTiptoeShake,
   pigeonTiptoeShake:POSES.pigeonTiptoeShake,
   stepPoint:POSES.stepPoint,stepPointShake:POSES.stepPointShake,
+  pigeonShake:POSES.pigeonShake,stepShake:POSES.stepShake,
 };
 const SEATED_POSES=Object.fromEntries(Object.entries(POSES).slice(9,12));
 const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(12,17));
 const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(17,24));
-const isMotionName=name=>Object.hasOwn(MOTION_POSES,name)||name==='tiptoeShake'||name==='bendTiptoeShake'||name==='pigeonTiptoeShake'||name==='stepPointShake';
+const isMotionName=name=>Object.hasOwn(MOTION_POSES,name)||
+  ['tiptoeShake','bendTiptoeShake','pigeonTiptoeShake',
+   'stepPointShake','pigeonShake','stepShake'].includes(name);
 const isLyingName=name=>Object.hasOwn(LYING_POSES,name);
 const MOTION_KEYS=Object.keys(MOTION_POSES);
 const BEND_KEYS=['bendForward','bendTiptoe'];
-const AMPLITUDE_KEYS=[...MOTION_KEYS,...BEND_KEYS,'tiptoeShake','bendTiptoeShake','pigeonTiptoeShake','stepPointShake'];
-const TOE_MOTION_POSES=new Set(['tiptoeShake','bendTiptoeShake','pigeonTiptoeShake','stepPointShake']);
+// Append newer actions: older saved amplitude arrays retain their indexes.
+const AMPLITUDE_KEYS=[...MOTION_KEYS,...BEND_KEYS,'tiptoeShake',
+  'bendTiptoeShake','pigeonTiptoeShake','stepPointShake','pigeonShake','stepShake'];
+const TOE_MOTION_POSES=new Set(['tiptoeShake','bendTiptoeShake',
+  'pigeonTiptoeShake','stepPointShake','pigeonShake','stepShake']);
 const DEFAULT_FOOT_MOTION={lateral:100,forward:100,heel:100};
 const DEFAULT_LEG_MORPH={length:100,height:100,thigh:100,calf:100};
 const MORPH_BOUNDS={length:[82,122],height:[80,130],thigh:[75,135],calf:[75,135]};
