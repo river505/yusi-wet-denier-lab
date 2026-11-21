@@ -196,10 +196,23 @@ export const skinFragment = /* glsl */`
     // A long, subtle opacity feather removes the toy-like hard upper boundary.
     // Evaluate in rest coordinates so the fade remains attached to the thigh
     // when switching poses or viewing the opening from above/inside.
-    float variation = .0028 * sin(restSurface.x*93. + restSurface.z*61.)
-                    + .0014 * sin(restSurface.x*178. - restSurface.z*37.);
-    float edgeFade = 1. - smoothstep(.745, .883, restSurface.y + variation);
-    gl_FragColor = vec4(skinColor, edgeFade);
+    // Restrict the cutaway to a 7 cm band: the remaining leg stays fully
+    // opaque and continues writing depth through alpha-to-coverage.
+    float variation = .0023*sin(restSurface.x*69. + restSurface.z*41.)
+                    + .0011*sin(restSurface.x*139. - restSurface.z*73.);
+    float cutCoord = restSurface.y + variation;
+    float cutFade = 1. - smoothstep(.800, .870, cutCoord);
+    // A little peach-colored bloom inside the cut band; no opaque white cap.
+    float cutBloom = smoothstep(.806, .840, cutCoord)
+                   * (1. - smoothstep(.854, .872, cutCoord));
+    skinColor = mix(skinColor, vec3(.97,.85,.83), cutBloom * .14);
+    // Subtle cool-grey silhouette darkening: no extra post-process pass,
+    // no transparent outline mesh and no impact on the depth buffer.
+    float facingDot = clamp(dot(n, normalize(eyeDirection)), 0., 1.);
+    float contour = 1. - smoothstep(.018, .19, facingDot);
+    float contourMask = 1. - smoothstep(.785, .854, cutCoord);
+    skinColor = mix(skinColor, vec3(.37,.37,.44), contour * contourMask * .19);
+    gl_FragColor = vec4(skinColor, cutFade);
     #include <colorspace_fragment>
   }
 `;
@@ -345,11 +358,18 @@ export const fabricFragment = /* glsl */`
       garmentOpacity = max(garmentOpacity, .76);
     }
     rgb *= tint;
-    // Match the translucent skin feather at the deliberately open upper thigh.
-    // Keep the stocking cuff sharp; only the underlying cutaway fades out.
-    float fade = 1. - smoothstep(.758,.883,h + .0018*sin(localPoint.x*81.+localPoint.z*53.));
-    if (reflection > 0.) fade *= reflection*(1.-smoothstep(-.03,.34,h));
-    gl_FragColor = vec4(max(rgb,0.), fade * (skinOnly > .5 ? 1. : garmentOpacity));
+    // Normal/view-dependent silhouette enhancement. This affects only the
+    // cloth's RGB at grazing angles; fabric opacity stays independently
+    // controlled by the denier, wetness and garment length.
+    float clothContour = pow(1. - incidence, 4.);
+    rgb = mix(rgb, vec3(.25,.24,.29), clothContour * .16);
+    // A separate narrow anatomical cutaway mask, not a global nylon alpha.
+    // The stocking cuff/band remains sharp and unaffected below this height.
+    float cutVariation = .0023*sin(localPoint.x*69.+localPoint.z*41.)
+                       + .0011*sin(localPoint.x*139.-localPoint.z*73.);
+    float cutFade = 1. - smoothstep(.800, .870, h + cutVariation);
+    if (reflection > 0.) cutFade *= reflection*(1.-smoothstep(-.03,.34,h));
+    gl_FragColor = vec4(max(rgb,0.), cutFade * (skinOnly > .5 ? 1. : garmentOpacity));
     #include <colorspace_fragment>
   }
 `;
