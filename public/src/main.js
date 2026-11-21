@@ -47,6 +47,7 @@ function createSound() {
   // provide distinct layers with no external audio files or autoplay.
   const AudioAPI=window.AudioContext||window.webkitAudioContext;
   let ctx,noise,rainNoise,master,rainSource,rainGain,rainFilter;
+  const footPanners=[null,null];
   let enabled=true,raining=false,unlocked=false,profile='studio',lastDrag=-100;
   const rainProfiles={
     studio:{frequency:1450,gain:.016,rate:.91,Q:.42},
@@ -151,10 +152,14 @@ function createSound() {
     const c=ensureAudio(false);
     if(!c)return;
     const now=c.currentTime;
-    const pan=c.createStereoPanner?.();
-    if(pan){
+    // Reuse two panners; allocating one for every step would leave
+    // permanently connected AudioNodes on mobile Safari.
+    let pan=footPanners[leg];
+    if(!pan&&typeof c.createStereoPanner==='function'){
+      pan=c.createStereoPanner();
       pan.pan.value=leg===0?-.22:.22;
       pan.connect(master);
+      footPanners[leg]=pan;
     }
     const destination=pan||master;
     function layer(type,initialHz,finalHz,peak,duration,rate){
