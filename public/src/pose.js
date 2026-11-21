@@ -183,7 +183,7 @@ let resolved = new WeakMap();
 export function clearMotionCache() { resolved = new WeakMap(); }
 const applied = new WeakMap();
 
-function resolvePose(restGeometry, name, frameIndex=0, amplitude=1) {
+function resolvePose(restGeometry, name, frameIndex=0, amplitude=1, footPitch=[0,0]) {
   let cache = resolved.get(restGeometry);
   if (!cache) {
     cache = new Map();
@@ -195,15 +195,18 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1) {
   const footLevel = restGeometry.boundingBox.min.y;
   const configs=isMotionPose(name)?motionConfigs(name,frameIndex/FRAME_COUNT,amplitude):poses[name];
   const followShin = isLyingPose(name);
-  const second = makeTransform({ ...configs[1], followShin });
-  let first = makeTransform({ ...configs[0], followShin });
+  const second = makeTransform({ ...configs[1], followShin,
+    ankle: (configs[1].ankle || 0) + (Number(footPitch[1]) || 0) });
+  let first = makeTransform({ ...configs[0], followShin,
+    ankle: (configs[0].ankle || 0) + (Number(footPitch[0]) || 0) });
 
   if (name === 'point') {
     const supportingHeight = soleHeight(vertices, second);
     let low = 0, high = 80;
     for (let i = 0; i < 16; i++) {
       const angle = (low + high) / 2;
-      const option = makeTransform({ ...configs[0], knee: angle });
+      const option = makeTransform({ ...configs[0], knee: angle,
+        ankle: (configs[0].ankle || 0) + (Number(footPitch[0]) || 0) });
       if (soleHeight(vertices, option) > supportingHeight) low = angle;
       else high = angle;
     }
@@ -258,13 +261,13 @@ function ensureSample(pose, rest) {
     pose.normals.set(transformNormal(pose.transform,point,p,n),off);
   }
 }
-export function applyPose(geometry, restGeometry, poseName, legIndex, phase=0, amplitude=1) {
+export function applyPose(geometry, restGeometry, poseName, legIndex, phase=0, amplitude=1, footPitch=[0,0]) {
   const name=(Object.hasOwn(poses,poseName)||isMotionPose(poseName))?poseName:'step';
   const animated=isMotionPose(name);
   const step=animated ? ((phase%1+1)%1)*FRAME_COUNT : 0;
   const first=Math.floor(step),next=(first+1)%FRAME_COUNT,t=step-first;
-  const pose=resolvePose(restGeometry,name,first,amplitude)[legIndex];
-  const future=animated?resolvePose(restGeometry,name,next,amplitude)[legIndex]:null;
+  const pose=resolvePose(restGeometry,name,first,amplitude,footPitch)[legIndex];
+  const future=animated?resolvePose(restGeometry,name,next,amplitude,footPitch)[legIndex]:null;
   const rest=restGeometry.attributes;
   ensureSample(pose,rest);
   if(future)ensureSample(future,rest);
