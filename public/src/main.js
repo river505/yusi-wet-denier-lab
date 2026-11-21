@@ -323,22 +323,7 @@ function createEngine({ stocking }) {
     return { group, skinMesh, cloth, outline, reflection, contact, nextStain: 0 };
   });
 
-  // Neutral seat prop, anchored in the same world coordinates as the posed
-  // pelvis and stage. Hidden for standing/walking/running actions.
-  const chair = new THREE.Group();
-  const seatMat = new THREE.MeshStandardMaterial({color:'#cdc2c4',roughness:.88,metalness:.02});
-  const frameMat = new THREE.MeshStandardMaterial({color:'#797883',roughness:.51,metalness:.14});
-  const seatPart=(w,h,d,x,y,z,mat)=>{
-    const part=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
-    part.position.set(x,y,z);part.receiveShadow=true;chair.add(part);
-  };
-  seatPart(.73,.035,.46,0,.54,-.15,seatMat);
-  seatPart(.70,.39,.030,0,.795,-.40,seatMat);
-  for(const x of [-.30,.30]){
-    for(const z of [-.34,.03])seatPart(.025,.53,.025,x,.265,z,frameMat);
-  }
-  chair.visible=false;
-  world.add(chair);
+  // Seated poses are shown without a chair or other seat geometry.
 
   // A stable rest-mesh vertex near the front arch keeps soft contact decals
   // aligned to animated feet rather than to their hip/group transforms.
@@ -441,7 +426,6 @@ function createEngine({ stocking }) {
 
   function placePose(phase=0) {
     const seated=isSeatedPose(pose),moving=isMotionPose(pose);
-    chair.visible=seated;
     models.forEach(({ group, skinMesh, cloth, reflection, contact }, index) => {
       applyPose(skinMesh.geometry,stocking,pose,index,phase);
       const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase);
@@ -467,8 +451,8 @@ function createEngine({ stocking }) {
     motionClock=0;
     lastMotionUpdate=-Infinity;
     placePose(0);
-    // Static ground shadows can be baked once. Animated and seated poses use
-    // the moving foot decals / chair instead of a frozen standing silhouette.
+    // Static ground shadows are baked once. Animated and seated poses use
+    // foot contact decals instead of a frozen standing silhouette.
     if(!isMotionPose(pose)&&!isSeatedPose(pose)){
       if(!shadowCache.has(pose))shadowCache.set(pose,bakeFloorShadow(models));
       floorShade.material.map=shadowCache.get(pose);
