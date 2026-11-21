@@ -331,7 +331,11 @@ export const fabricFragment = /* glsl */`
         *(1.-smoothstep(.28,.32,length(f)));
     }
     if (id == 8.) return 1.-smoothstep(.02,.053, length(f)*(1.35+.65*cos(atan(f.y,f.x)*5.)));
-    if (id == 9.) return smoothstep(.10,.22,abs(sin(p.x*6.28)*sin(p.y*6.28)));
+    if (id == 9.) {
+      float w=clamp(patternRandomness,0.,1.);
+      vec2 flow=vec2(.10*sin(p.y*3.7),.09*cos(p.x*4.1))*w;
+      return smoothstep(.10,.22,abs(sin((p.x+flow.x)*6.28)*sin((p.y+flow.y)*6.28)));
+    }
     if (id == 10.) return smoothstep(.2,.8,localPoint.y);
     if (id == 11.) {
       float palm = 1.-smoothstep(.10,.14,length(f+vec2(0.,.09)));
