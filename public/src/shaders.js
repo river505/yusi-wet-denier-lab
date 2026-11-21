@@ -267,7 +267,47 @@ export const fabricVertex = /* glsl */`
   }
 `;
 
+// Toe-thong coverage, evaluated in the undistorted MakeHuman rest mesh.
+// +Z points towards the toes; x≈-.016 is the big/second toe cleft.
+// This is an OPEN toe-thong, not the tabi split-toe sock.
+const thongFootMask = /* glsl */`
+  float thongFootCoverage(vec3 p) {
+    if (p.y > .155) return 1.;
+    // Full stocking at the ankle and rear heel; upper and lower cloth
+    // taper into triangular panels towards the first interdigital cleft.
+    float ankleJoin = smoothstep(.100,.150,p.y);
+    float heelCup = 1.-smoothstep(-.096,-.052,p.z);
+    float progression = smoothstep(-.075,.191,p.z);
+    float centerX = mix(.002,-.016,progression);
+    // Dorsal V: wide base at front ankle, narrow apex at toe web.
+    float dorsalHalfWidth = mix(.058,.0045,progression);
+    float dorsalEdge = 1.-smoothstep(
+      dorsalHalfWidth-.0035,dorsalHalfWidth+.002,abs(p.x-centerX));
+    float instepHeight = mix(.052,.019,smoothstep(.008,.205,p.z));
+    float dorsalSurface = smoothstep(instepHeight-.012,
+                                     instepHeight+.007,p.y);
+    float dorsalTriangle = dorsalEdge*dorsalSurface*
+      smoothstep(-.100,-.062,p.z);
+    // Plantar V: a narrow heel-to-ball central strap widens into the
+    // forefoot triangle, then narrows back to the same toe-web point.
+    float soleHalfWidth = p.z < .068
+      ? mix(.018,.046,smoothstep(-.105,.068,p.z))
+      : mix(.046,.004,smoothstep(.068,.199,p.z));
+    float plantarEdge = 1.-smoothstep(
+      soleHalfWidth-.003,soleHalfWidth+.003,abs(p.x-centerX));
+    float plantarSurface = 1.-smoothstep(.018,.037,p.y);
+    float plantarTriangle = plantarEdge*plantarSurface;
+    // Thin continuous loop running through the great/second toe web
+    // on top, the front interspace, and back under the ball of the foot.
+    float toeWeb = (1.-smoothstep(.003,.009,abs(p.x+.016)))*
+                   smoothstep(.153,.183,p.z);
+    return clamp(max(max(ankleJoin,heelCup),
+                   max(max(dorsalTriangle,plantarTriangle),toeWeb)),0.,1.);
+  }
+`;
+
 export const fabricFragment = /* glsl */`
+  ${thongFootMask}
   uniform vec3 skinTint;
   uniform float skinLightness;
   uniform vec3 dye;
@@ -460,17 +500,16 @@ export const fabricFragment = /* glsl */`
         }
       }
       if (toeStyle > 2.5) {
-        // Tabi: optically cut a narrow channel separating the large toe
-        // from the smaller digits. Skin remains visible through the slit,
-        // with a stitched edge; the underlying anatomical toes stay intact.
-        float forefoot=smoothstep(.15,.19,localPoint.z)
-          *(1.-smoothstep(.035,.070,localPoint.y));
-        float seam=abs(localPoint.x+.016);
-        float gap=(1.-smoothstep(.0018,.0042,seam))*forefoot;
-        float stitched=(1.-smoothstep(.004,.009,seam))*forefoot;
-        garmentOpacity*=1.-.84*gap;
-        rgb=mix(rgb,skin, gap*.42);
-        rgb*=1.-.28*stitched;
+        // Genuine toe-thong construction: a wide ankle-rooted dorsal V
+        // tapers between the first two toes, wraps underneath as a
+        // plantar V, then continues back as a narrow heel connection.
+        // Exposed side toes stay SKIN-coloured rather than fake seams.
+        float cover=thongFootCoverage(localPoint);
+        garmentOpacity*=cover;
+        // Soft dark knitted edge where the triangular panels end.
+        float binding=smoothstep(.05,.35,cover)*
+                      (1.-smoothstep(.85,1.,cover));
+        rgb=mix(rgb,dye*.72,binding*.28);
       }
       rgb += knit * mix(1.,.22,wetness);
       // Broad cloth fibre sheen plus tighter wet and glossy highlights.
@@ -556,19 +595,26 @@ export const fabricFragment = /* glsl */`
 export const outlineVertex = /* glsl */`
   attribute vec3 restPosition;
   varying float height;
+  varying vec3 originalPoint;
   void main() {
     height = restPosition.y;
+    originalPoint=restPosition;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position+normal*.0018,1.);
   }
 `;
 
 export const outlineFragment = /* glsl */`
+  ${thongFootMask}
   uniform float lengthLimit;
+  uniform float toeStyle;
   varying float height;
+  varying vec3 originalPoint;
   void main() {
     float stocking = 1. - smoothstep(lengthLimit-.005,lengthLimit+.004,height);
     vec3 pigment = mix(vec3(.33,.16,.16),vec3(.018,.016,.023),stocking);
     float alpha = mix(.52,.91,stocking)*(1.-smoothstep(.747,.852,height));
+    // Exposed toes must not retain the black BackSide silhouette.
+    if(toeStyle>2.5)alpha*=thongFootCoverage(originalPoint);
     gl_FragColor = vec4(pigment,alpha);
     #include <colorspace_fragment>
   }
