@@ -82,6 +82,7 @@ function fabricMaterial(skinAppearance) {
       lengthLimit: { value: .7 },
       band: { value: .05 },
       denier: { value: 40 },
+      toeStyle: { value: 0 },
       fabric: { value: 0 },
       cuff: { value: 1 },
       pattern: { value: 0 },
@@ -105,7 +106,9 @@ function updateFabric(uniforms, clothes) {
   uniforms.wetDye.value.set(palette[config.wetColor] ?? (config.wetColor || 0));
   uniforms.lengthLimit.value = limit;
   uniforms.band.value = band;
-  uniforms.denier.value = Number(config.denier) || 40;
+  uniforms.denier.value = THREE.MathUtils.clamp(Number(config.denier) || 40,5,200);
+  uniforms.toeStyle.value = ['natural','reinforced','seamless'].indexOf(config.toeStyle) < 0
+    ? 0 : ['natural','reinforced','seamless'].indexOf(config.toeStyle);
   uniforms.fabric.value = Math.max(0, styles.indexOf(config.material));
   uniforms.cuff.value = config.length === 'tights' ? 0 : Math.max(0, cuffs.indexOf(config.cuff));
   uniforms.pattern.value = Math.max(0, patterns.indexOf(config.pattern));
