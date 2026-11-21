@@ -10,19 +10,21 @@ const POSES = {
   lieSideLeft:'左侧躺',lieSideRight:'右侧躺',
   lieSpread:'平躺张腿',
   tiptoeShake:'踮脚抖腿',bendTiptoeShake:'屈膝踮脚抖腿',
+  pigeonTiptoeShake:'内八踮脚抖腿',
 };
 const STANDING_POSES={
   ...Object.fromEntries(Object.entries(POSES).slice(0,9)),
   tiptoeShake:POSES.tiptoeShake,bendTiptoeShake:POSES.bendTiptoeShake,
+  pigeonTiptoeShake:POSES.pigeonTiptoeShake,
 };
 const SEATED_POSES=Object.fromEntries(Object.entries(POSES).slice(9,12));
 const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(12,17));
 const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(17,24));
-const isMotionName=name=>Object.hasOwn(MOTION_POSES,name)||name==='tiptoeShake'||name==='bendTiptoeShake';
+const isMotionName=name=>Object.hasOwn(MOTION_POSES,name)||name==='tiptoeShake'||name==='bendTiptoeShake'||name==='pigeonTiptoeShake';
 const isLyingName=name=>Object.hasOwn(LYING_POSES,name);
 const MOTION_KEYS=Object.keys(MOTION_POSES);
 const BEND_KEYS=['bendForward','bendTiptoe'];
-const AMPLITUDE_KEYS=[...MOTION_KEYS,...BEND_KEYS,'tiptoeShake','bendTiptoeShake'];
+const AMPLITUDE_KEYS=[...MOTION_KEYS,...BEND_KEYS,'tiptoeShake','bendTiptoeShake','pigeonTiptoeShake'];
 const isBendName=name=>BEND_KEYS.includes(name);
 const isAdjustableName=name=>isMotionName(name)||isBendName(name);
 const defaultAmplitudes=()=>Object.fromEntries(AMPLITUDE_KEYS.map(name=>[name,100]));
