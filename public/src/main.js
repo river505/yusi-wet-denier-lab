@@ -614,18 +614,19 @@ function createEngine({ stocking }) {
   }
 
   function resetCamera() {
+    const extent=legMorph.height*(.2+.8*legMorph.length);
     if(isLyingPose(pose)){
       // Reclining rigs are anchored near the ground and extend along +Z.
       // A high 3/4 view makes knee overlap and sidedness inspectable.
-      view.target.set(0,.24,.44);
+      view.target.set(0,.24*extent,.44*extent);
       view.yaw=.39;
       view.pitch=.64;
-      view.range=1.88;
+      view.range=1.88*extent;
     }else{
       view.yaw = .62;
       view.pitch = .10;
-      view.range = pose === 'single' ? 1.95 : 2;
-      view.target.copy(restTarget);
+      view.range = (pose === 'single' ? 1.95 : 2)*extent;
+      view.target.copy(restTarget).multiplyScalar(extent);
     }
     lastInput = performance.now();
   }
