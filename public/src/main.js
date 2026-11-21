@@ -1,6 +1,6 @@
 import * as THREE from '../vendor/three.module.js';
 import { loadMesh } from './mesh.js';
-import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragment, skinVertex, stageFragment, stageVertex, panoramaVertex } from './shaders.js';
+import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragment, skinVertex, stageFragment, stageVertex, panoramaVertex, outlineVertex, outlineFragment } from './shaders.js';
 import { initUI } from './ui.js';
 import { applyPose } from './pose.js';
 import { createSpatialEnvironment } from './environment.js';
@@ -256,11 +256,9 @@ function createEngine({ stocking }) {
     // The skin shader recesses its vertices slightly so cloth stays outside and anti-z-fights.
     const skinMesh = new THREE.Mesh(stocking.clone(), new THREE.ShaderMaterial({
       vertexShader: skinVertex, fragmentShader: skinFragment,
-      // Skin opacity must actually blend with the room; otherwise the
-      // GLSL alpha gradient still writes an opaque cut edge into the depth buffer.
-      // OPAQUE depth occluder. Alpha-to-coverage resolves the small feathered
-      // cutaway using MSAA sample coverage rather than transparent object
-      // sorting, so the near leg correctly hides the far leg.
+      // Keep skin opaque in the main depth buffer. Its upper cutaway uses
+      // MSAA alpha-to-coverage rather than blending the entire limb, so the
+      // near leg fully occludes the far leg away from the fade band.
       transparent: false, depthTest: true, depthWrite: true,
       alphaToCoverage: true, side: THREE.FrontSide,
     }));
@@ -272,6 +270,21 @@ function createEngine({ stocking }) {
     cloth.material.depthWrite = false;
     cloth.renderOrder = 1;
     group.add(cloth);
+    // Restore the original repository's outward-expanded back-face outline.
+    // Keep it transparent + depth-tested; the opaque skin continues to occlude
+    // the far leg. Share the deformed cloth geometry and length uniform so
+    // this never becomes a separate animated mesh that can desynchronize.
+    const outline = new THREE.Mesh(geometry, new THREE.ShaderMaterial({
+      uniforms: { lengthLimit: cloth.material.uniforms.lengthLimit },
+      vertexShader: outlineVertex,
+      fragmentShader: outlineFragment,
+      transparent: true,
+      side: THREE.BackSide,
+      depthTest: true,
+      depthWrite: false,
+    }));
+    outline.renderOrder = 0;
+    group.add(outline);
     const reflectionMaterial = new THREE.ShaderMaterial({
       uniforms: { ...cloth.material.uniforms, reflection: { value: 0 } },
       vertexShader: fabricVertex, fragmentShader: fabricFragment,
@@ -293,7 +306,7 @@ function createEngine({ stocking }) {
     group.scale.x = index === 0 ? 1 : -1;
     world.add(group);
     legMeshes.push(cloth);
-    return { group, skinMesh, cloth, reflection, contact, nextStain: 0 };
+    return { group, skinMesh, cloth, outline, reflection, contact, nextStain: 0 };
   });
 
   const droplets = [];
