@@ -18,6 +18,14 @@ const COLORS = {
   mist: ['雾蓝', '#8fb4de'], navy: ['藏青', '#1f2a4d'], forest: ['墨绿', '#254a3c'],
 };
 
+const SKIN_TONES = {
+  original: ['原版', '#c99d9a'],
+  porcelain: ['瓷白', '#ebd6d1'],
+  warm: ['暖肤', '#d7a79a'],
+  neutral: ['自然', '#c5a09a'],
+  tan: ['小麦', '#ac8377'],
+  deep: ['深肤', '#8d6b62'],
+};
 const MATERIALS = {
   sheer: ['薄丝', '遇水变透'], matte: ['哑光丝', '柔雾质感'], gloss: ['油亮', '水珠更圆更滑'],
   pearl: ['珠光', '沾水更闪'], velvet: ['天鹅绒', '遇水变深'], cotton: ['棉袜', '吸水很快'],
@@ -143,13 +151,15 @@ function serializeLook(state) {
     leg.length, leg.cuff, Number(leg.garter), leg.material, leg.denier, leg.pattern,
     encodeColor(leg.color), leg.secret, encodeColor(leg.wetColor) || '-',
   ].join('.'));
-  return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs].join('~');
+  return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs,
+    encodeColor(state.skinTone), state.skinBrightness].join('~');
 }
 
 function deserializeLook(hash) {
   const serialized = new URLSearchParams(hash.slice(1)).get('look');
   if (!serialized) return null;
-  const [version, pose, scene, backdrop, left, right = left] = serialized.split('~');
+  const [version, pose, scene, backdrop, left, right = left,
+    tone = 'original', brightness = '100'] = serialized.split('~');
   if (version !== '1') return null;
 
   const readLeg = value => {
@@ -173,6 +183,9 @@ function deserializeLook(hash) {
     scene: Object.hasOwn(SCENES, scene) ? scene : 'studio',
     backdrop: decodeColor(backdrop, BACKDROPS) || 'lilac',
     legs: [readLeg(left), readLeg(right)],
+    skinTone: decodeColor(tone, SKIN_TONES) || 'original',
+    skinBrightness: Number.isFinite(Number(brightness))
+      ? Math.max(70,Math.min(130,Number(brightness))) : 100,
   };
 }
 
@@ -180,6 +193,7 @@ export function initUI(engine) {
   const state = {
     pose: 'step', scene: 'studio', backdrop: 'lilac', target: '-1', tab: 'pose',
     mode: 'water', rain: false, slow: false, sound: true, legs: presetLegs(0),
+    skinTone: 'original', skinBrightness: 100,
   };
   const body = document.body;
   const view = get('#view');
@@ -219,7 +233,16 @@ export function initUI(engine) {
       row('袜口', choices('cuff', CUFFS)),
       row('吊带', choices('garter', {'0': '不要', '1': '要（大腿袜）'})),
     ],
-    color: [swatches('color', COLORS, '自选颜色')],
+    color: [
+      row('丝袜颜色', swatches('color', COLORS, '自选丝袜颜色')),
+      row('皮肤颜色', swatches('skinTone', SKIN_TONES, '自定义肤色')),
+      row('皮肤亮度', element('div', {class:'skin-lightness'}, [
+        element('input', {id:'skinBrightness',type:'range',min:'70',max:'130',
+          step:'1',value:'100','aria-label':'皮肤亮度'}),
+        element('output', {id:'skinBrightnessValue',for:'skinBrightness'}, ['100%']),
+      ])),
+      note('默认肤色与原始仓库一致；截断内侧固定渐变至白色，不受肤色调节影响。'),
+    ],
     material: [
       row('材质', choices('material', Object.fromEntries(
         Object.entries(MATERIALS).map(([key, [label]]) => [key, label]),
@@ -282,6 +305,9 @@ export function initUI(engine) {
     for (const [key, value] of Object.entries(leg)) {
       syncChoices(materials, key, key === 'garter' ? Number(value) : value);
     }
+    syncChoices(materials, 'skinTone', state.skinTone);
+    const lightnessOutput = get('#skinBrightnessValue');
+    if (lightnessOutput) lightnessOutput.textContent = state.skinBrightness + '%';
     syncChoices(materials, 'pose', state.pose);
     syncChoices(materials, 'target', state.pose === 'single' ? '-1' : state.target);
     foot.classList.toggle('no-target', state.pose === 'single' || state.tab === 'pose');
@@ -479,6 +505,10 @@ export function initUI(engine) {
     const look = deserializeLook(location.hash);
     if (look) {
       state.target = '-1';
+      state.skinTone = look.skinTone;
+      state.skinBrightness = look.skinBrightness;
+      get('#skinBrightness').value = String(state.skinBrightness);
+      engine.setSkinAppearance({tone: state.skinTone, brightness: state.skinBrightness});
       setPose(look.pose);
       setScene(look.scene, look.backdrop);
       applyMaterial(look.legs);
@@ -557,13 +587,27 @@ export function initUI(engine) {
     } else if (key === 'preset') {
       state.target = '-1';
       applyMaterial(presetLegs(Number(value)));
+    } else if (key === 'skinTone') {
+      state.skinTone = value;
+      engine.setSkinAppearance({tone: state.skinTone, brightness: state.skinBrightness});
+      syncWardrobe();
     } else {
       const next = key === 'denier' ? Number(value) : key === 'garter' ? value === '1' : value;
       editMaterial(key, next || (key === 'wetColor' ? null : next));
     }
   });
-  materials.querySelector('input[type="color"]').addEventListener('input', event => {
+  materials.querySelector('[data-key="color"] input[type="color"]').addEventListener('input', event => {
     editMaterial('color', event.target.value);
+  });
+  materials.querySelector('[data-key="skinTone"] input[type="color"]').addEventListener('input', event => {
+    state.skinTone = event.target.value;
+    engine.setSkinAppearance({tone: state.skinTone, brightness: state.skinBrightness});
+    syncWardrobe();
+  });
+  get('#skinBrightness').addEventListener('input', event => {
+    state.skinBrightness = Math.max(70,Math.min(130,Number(event.target.value)||100));
+    engine.setSkinAppearance({tone: state.skinTone, brightness: state.skinBrightness});
+    get('#skinBrightnessValue').textContent = state.skinBrightness + '%';
   });
   presetChoices.addEventListener('pointerover', event => {
     const card = event.target.closest('.card');
@@ -670,6 +714,7 @@ export function initUI(engine) {
   window.addEventListener('hashchange', applyLook);
   engine.setScene(state.scene, state.backdrop);
   engine.setPose(state.pose);
+  engine.setSkinAppearance({tone: state.skinTone,brightness: state.skinBrightness});
   applyMaterial();
   setMode(state.mode, false);
   syncScenes();
