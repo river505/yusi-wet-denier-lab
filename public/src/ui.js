@@ -260,6 +260,10 @@ export function initUI(engine) {
       ))),
       row('常用D', choices('denier', DENIERS)),
       row('袜尖', choices('toeStyle', TOE_STYLES)),
+      row('细节观察', element('div', {class:'leg-tools'}, [
+        button('脚趾特写', {id:'focusToeBtn'}),
+        button('恢复全景', {id:'resetToeBtn'}),
+      ])),
       row('自定义D', element('div', {class:'denier-adjust'}, [
         denierRange, denierNumber, element('span', {class:'unit'}, ['D']),
       ])),
@@ -322,7 +326,9 @@ export function initUI(engine) {
   }
 
   function syncWardrobe() {
-    const leg = state.legs[state.target === '1' && state.pose !== 'single' ? 1 : 0];
+    // Even in a single-leg pose the hidden side must remain independently
+    // editable, to be revealed when the user switches back to both legs.
+    const leg = state.legs[state.target === '1' ? 1 : 0];
     for (const [key, value] of Object.entries(leg)) {
       syncChoices(materials, key, key === 'garter' ? Number(value) : value);
     }
@@ -332,7 +338,10 @@ export function initUI(engine) {
     denierRange.value = String(activeDenier);
     denierNumber.value = String(activeDenier);
     const toneName = state.target === '-1' ? '双腿' : state.target === '0' ? '左腿' : '右腿';
-    denierHint.textContent = '当前调整' + toneName + ' · 5–200D；低D显肤色，高D织物遮盖更强。';
+    const mixed = state.legs[0].denier !== state.legs[1].denier;
+    denierHint.textContent = state.target === '-1' && mixed
+      ? '两腿厚度不同：左 '+clampDenier(state.legs[0].denier)+'D / 右 '+clampDenier(state.legs[1].denier)+'D。调整滑块将统一两腿厚度。'
+      : '当前调整'+toneName+' · 5–200D；低D显肤色，高D织物遮盖更强。';
     state.legs.forEach((side,index) => {
       const b = get('#legSummary'+index);
       b.textContent = (index===0?'左腿':'右腿')+' · '+clampDenier(side.denier)+'D';
@@ -343,8 +352,8 @@ export function initUI(engine) {
     const lightnessOutput = get('#skinBrightnessValue');
     if (lightnessOutput) lightnessOutput.textContent = state.skinBrightness + '%';
     syncChoices(materials, 'pose', state.pose);
-    syncChoices(materials, 'target', state.pose === 'single' ? '-1' : state.target);
-    foot.classList.toggle('no-target', state.pose === 'single' || state.tab === 'pose');
+    syncChoices(materials, 'target', state.target);
+    foot.classList.toggle('no-target', state.tab === 'pose');
     const inactive = ['velvet', 'cotton', 'latex'].includes(leg.material);
     materials.querySelector('[data-key="denier"]').classList.toggle('idle', inactive);
     get('.denier-adjust').classList.toggle('idle', inactive);
@@ -527,7 +536,7 @@ export function initUI(engine) {
 
   function editMaterial(key, value) {
     if (key === 'denier') value = clampDenier(value);
-    const target = state.pose === 'single' ? '-1' : state.target;
+    const target = state.target;
     const legs = state.legs.map((leg, index) => {
       if (target !== '-1' && Number(target) !== index) return leg;
       const next = {...leg, [key]: value};
@@ -651,6 +660,14 @@ export function initUI(engine) {
   get('#swapLegs').addEventListener('click', () => {
     state.target='-1';
     applyMaterial([{...state.legs[1]}, {...state.legs[0]}]);
+  });
+  get('#focusToeBtn').addEventListener('click', () => {
+    engine.focusToes(state.target);
+    setPanel(null);
+  });
+  get('#resetToeBtn').addEventListener('click', () => {
+    engine.resetCamera();
+    setPanel(null);
   });
   materials.querySelector('[data-key="color"] input[type="color"]').addEventListener('input', event => {
     editMaterial('color', event.target.value);
