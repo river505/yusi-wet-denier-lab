@@ -1342,3 +1342,41 @@ body.fine .pane-hint.keys {
   }
 
 }
+
+/* Leg / full-body workspace selector. Independent from the existing dock. */
+.atelier-view-switch {
+  position:fixed;
+  z-index:12;
+  left:50%;
+  top:calc(13px + var(--safe-t));
+  transform:translateX(-50%);
+  display:flex;
+  align-items:center;
+  gap:3px;
+  padding:4px;
+  border:1px solid rgba(255,255,255,.9);
+  border-radius:30px;
+  background:rgba(255,255,255,.83);
+  backdrop-filter:blur(16px);
+  box-shadow:0 5px 19px rgba(75,60,85,.13);
+  white-space:nowrap;
+}
+.atelier-view-switch a {
+  display:block;
+  border-radius:22px;
+  text-decoration:none;
+  color:#776d7e;
+  padding:9px 14px;
+  font-size:11px;
+}
+.atelier-view-switch a[aria-current=page] {
+  color:#fff;
+  background:#534b5c;
+}
+@media(max-width:600px){
+  .atelier-view-switch {top:calc(76px + var(--safe-t));}
+  .atelier-view-switch a{font-size:11px;padding:7px 15px;}
+}
+@media(max-width:355px){
+  .atelier-view-switch {top:calc(72px + var(--safe-t));}
+}
