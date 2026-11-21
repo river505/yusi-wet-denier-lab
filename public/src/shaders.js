@@ -192,27 +192,11 @@ export const skinFragment = /* glsl */`
     float rim = pow(1. - max(dot(n, normalize(eyeDirection)), 0.), 3.);
     vec3 skinColor = mix(vec3(.76, .56, .53), vec3(.92, .77, .72), .62);
     skinColor = skinColor * illumination + vec3(.025, .020, .018) * rim;
-    // The leg is a deliberately open reference mesh, not an anatomical cutaway.
-    // A long, subtle opacity feather removes the toy-like hard upper boundary.
-    // Evaluate in rest coordinates so the fade remains attached to the thigh
-    // when switching poses or viewing the opening from above/inside.
-    // Restrict the cutaway to a 7 cm band: the remaining leg stays fully
-    // opaque and continues writing depth through alpha-to-coverage.
-    float variation = .0023*sin(restSurface.x*69. + restSurface.z*41.)
-                    + .0011*sin(restSurface.x*139. - restSurface.z*73.);
-    float cutCoord = restSurface.y + variation;
-    float cutFade = 1. - smoothstep(.800, .870, cutCoord);
-    // A little peach-colored bloom inside the cut band; no opaque white cap.
-    float cutBloom = smoothstep(.806, .840, cutCoord)
-                   * (1. - smoothstep(.854, .872, cutCoord));
-    skinColor = mix(skinColor, vec3(.97,.85,.83), cutBloom * .14);
-    // Subtle cool-grey silhouette darkening: no extra post-process pass,
-    // no transparent outline mesh and no impact on the depth buffer.
-    float facingDot = clamp(dot(n, normalize(eyeDirection)), 0., 1.);
-    float contour = 1. - smoothstep(.018, .19, facingDot);
-    float contourMask = 1. - smoothstep(.785, .854, cutCoord);
-    skinColor = mix(skinColor, vec3(.37,.37,.44), contour * contourMask * .19);
-    gl_FragColor = vec4(skinColor, cutFade);
+    // Match the upstream Wet Denier Lab cutaway in rest coordinates.
+    // The original textile fades over .783-.861; the silhouette outline
+    // fades earlier (.747-.852). Keep skin depth-writing with MSAA coverage.
+    float edgeFade = 1. - smoothstep(.783,.861,restSurface.y);
+    gl_FragColor = vec4(skinColor, edgeFade);
     #include <colorspace_fragment>
   }
 `;
@@ -350,24 +334,18 @@ export const fabricFragment = /* glsl */`
         if (cuff == 3.) detail = .29+.42*pow(.5+.5*sin(angle*782.),2.);
         rgb = mix(rgb, mix(dye,vec3(.07,.055,.07),.28),detail);
       }
-      // Never substitute near-black pixels for the open mesh's back-facing interior.
-      rgb = mix(rgb, mix(skin,dye,.28), (1. - smoothstep(.02,.27,incidence))*.14);
+      // Restore the upstream grazing-angle dark contour; the dedicated
+      // expanded BackSide outline controls its screen-space thickness.
+      rgb = mix(rgb,vec3(.023,.022,.036),(1. - smoothstep(.02,.27,incidence))*.86);
     }
     if (garter > 0. && skinOnly == 0. && h > lengthLimit && abs(fract(angle*2.+.3)-.5)<.086) {
       rgb = mix(rgb,dye,.77);
       garmentOpacity = max(garmentOpacity, .76);
     }
     rgb *= tint;
-    // Normal/view-dependent silhouette enhancement. This affects only the
-    // cloth's RGB at grazing angles; fabric opacity stays independently
-    // controlled by the denier, wetness and garment length.
-    float clothContour = pow(1. - incidence, 4.);
-    rgb = mix(rgb, vec3(.25,.24,.29), clothContour * .16);
-    // A separate narrow anatomical cutaway mask, not a global nylon alpha.
-    // The stocking cuff/band remains sharp and unaffected below this height.
-    float cutVariation = .0023*sin(localPoint.x*69.+localPoint.z*41.)
-                       + .0011*sin(localPoint.x*139.-localPoint.z*73.);
-    float cutFade = 1. - smoothstep(.800, .870, h + cutVariation);
+    // Faithful to the original smoothstep range; garment optical density
+    // remains independent, preventing transparency through the whole leg.
+    float cutFade = 1. - smoothstep(.783,.861,h);
     if (reflection > 0.) cutFade *= reflection*(1.-smoothstep(-.03,.34,h));
     gl_FragColor = vec4(max(rgb,0.), cutFade * (skinOnly > .5 ? 1. : garmentOpacity));
     #include <colorspace_fragment>
