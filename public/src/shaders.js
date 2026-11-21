@@ -276,6 +276,8 @@ export const fabricFragment = /* glsl */`
   uniform float fabric;
   uniform float cuff;
   uniform float pattern;
+  uniform float patternDensity;
+  uniform float patternRandomness;
   uniform float secret;
   uniform float garter;
   uniform float skinOnly;
@@ -305,16 +307,28 @@ export const fabricFragment = /* glsl */`
     return fract(sin(dot(p,vec2(19.27,112.9))) * 8372.356);
   }
   float shape(float id, vec2 p) {
-    vec2 f = fract(p) - .5;
+    vec2 f=fract(p)-.5;
+    // One motif per unit cell. Jitter never exceeds 0.14 of a cell,
+    // and every random motif fits within 0.33 of its center. Therefore
+    // adjacent motifs have at least 1-2*.14-2*.33 = .06 spacing.
+    if(id==1.||id==2.||id==7.||id==8.||id==11.){
+      vec2 cell=floor(p);
+      vec2 jitter=vec2(hash(cell+vec2(13.,79.)),hash(cell+vec2(93.,17.)))*2.-1.;
+      f-=.14*clamp(patternRandomness,0.,1.)*jitter;
+      float scale=1.+.09*patternRandomness*(2.*hash(cell+vec2(49.,61.))-1.);
+      f*=scale;
+    }
     if (id == 1.) return 1. - smoothstep(.13,.17,length(f));
-    if (id == 2.) return 1. - smoothstep(.40,.49,abs(f.x)+abs(f.y));
+    if (id == 2.) return 1. - smoothstep(.265,.32,abs(f.x)+abs(f.y));
     if (id == 3.) return smoothstep(.41,.48,max(abs(f.x),abs(f.y)));
     if (id == 4.) return step(.54,fract(p.y));
     if (id == 5.) return step(.87,fract(p.x));
     if (id == 6.) return 1. - smoothstep(.015,.035,abs(fract(p.x/9.+.5)-.5));
     if (id == 7.) {
-      float h = f.x*f.x + f.y*f.y - .075;
-      return float(h*h*h - f.x*f.x*f.y*f.y*f.y < 0.);
+      vec2 heart=f*1.55;
+      float h=heart.x*heart.x+heart.y*heart.y-.075;
+      return float(h*h*h-heart.x*heart.x*heart.y*heart.y*heart.y < 0.)
+        *(1.-smoothstep(.28,.32,length(f)));
     }
     if (id == 8.) return 1.-smoothstep(.02,.053, length(f)*(1.35+.65*cos(atan(f.y,f.x)*5.)));
     if (id == 9.) return smoothstep(.10,.22,abs(sin(p.x*6.28)*sin(p.y*6.28)));
@@ -342,6 +356,9 @@ export const fabricFragment = /* glsl */`
     float h = localPoint.y;
     float angle = atan(localPoint.x+.006,localPoint.z-.030) / 6.2831853 + .5;
     vec2 textile = vec2(angle*17.,h*14.);
+    bool scattered=pattern==1.||pattern==2.||pattern==7.||pattern==8.||pattern==11.;
+    bool frequencyPattern=scattered||pattern==9.;
+    vec2 printUV=textile*(frequencyPattern?sqrt(clamp(patternDensity,.2,2.)):1.);
     float knit = (hash(floor(vec2(angle*1400.,h*1500.))) - .5) * .019;
     float shine = pow(max(0.,dot(n,normalize(light+view))),mix(25.,85.,step(1.5,fabric)));
     float stocking = step(h, lengthLimit + (cuff == 1. ? .0048 * (.5+.5*cos(angle*125.6637)) : 0.));
@@ -358,7 +375,7 @@ export const fabricFragment = /* glsl */`
       if (fabric >= 4.) { garmentOpacity = .97; dense = .96; }
       vec3 base = mix(skin * vec3(.86,.86,.88),dye,dense);
       base *= mix(.82,1.16,modeled);
-      float print = shape(pattern,textile);
+      float print = shape(pattern,printUV);
       if (pattern == 3.) base = mix(skin,base,print);
       else if (pattern == 4.) base = mix(base, vec3(.81,.80,.85)*shade,print*.76);
       else base *= 1. - .42 * print;
@@ -379,7 +396,7 @@ export const fabricFragment = /* glsl */`
       }
       vec3 wet = mix(base*.61,skin,.81 - .27*step(3.5,fabric));
       wet = mix(wet,wetDye,step(.001,dot(wetDye,wetDye))*.72);
-      if (secret > 0.) wet *= 1. - .42*shape(secret,textile);
+      if (secret > 0.) wet *= 1. - .42*shape(secret,printUV);
       if (fabric >= 6.) wet = base;
       rgb = mix(base,wet,wetness);
       garmentOpacity = mix(garmentOpacity,max(.23,garmentOpacity*.70),wetness);
@@ -396,9 +413,22 @@ export const fabricFragment = /* glsl */`
           // of creating an artificial flat colour band across the whole foot.
           garmentOpacity = mix(garmentOpacity,min(.985,garmentOpacity+.24),toeRegion);
           rgb = mix(rgb,dye*.85,toeRegion*.18);
-        } else if (toeStyle > 1.5) {
+        } else if (toeStyle > 1.5 && toeStyle < 2.5) {
           garmentOpacity = mix(garmentOpacity,max(.18,garmentOpacity*.78),toeRegion);
         }
+      }
+      if (toeStyle > 2.5) {
+        // Tabi: optically cut a narrow channel separating the large toe
+        // from the smaller digits. Skin remains visible through the slit,
+        // with a stitched edge; the underlying anatomical toes stay intact.
+        float forefoot=smoothstep(.15,.19,localPoint.z)
+          *(1.-smoothstep(.035,.070,localPoint.y));
+        float seam=abs(localPoint.x+.016);
+        float gap=(1.-smoothstep(.0018,.0042,seam))*forefoot;
+        float stitched=(1.-smoothstep(.004,.009,seam))*forefoot;
+        garmentOpacity*=1.-.84*gap;
+        rgb=mix(rgb,skin, gap*.42);
+        rgb*=1.-.28*stitched;
       }
       rgb += knit * mix(1.,.22,wetness);
       // Soft silk / oil sheen is continuous; pearl requires a *different*
