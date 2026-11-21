@@ -228,27 +228,71 @@ body.ready .loading {
   -webkit-backdrop-filter:blur(16px)
 }
 
+/* Mobile: the two mode buttons + six actions MUST fit without side scroll.
+   Use fractional grid tracks instead of the old 52px/102px flex minimums. */
 body:not(.wide) .dock {
   width:min(480px,calc(100vw - var(--gutter-l) - var(--gutter-r)));
-  gap:5px;
-  padding:8px;
-  overflow-x:auto;
-  overflow-y:hidden;
-  scroll-padding-inline:8px;
-  overscroll-behavior-x:contain;
-  scrollbar-width:none
+  display:grid;
+  grid-template-columns:minmax(0,1.75fr) repeat(6,minmax(0,1fr));
+  align-items:stretch;
+  gap:2px;
+  padding:6px;
+  overflow:visible;
 }
 
-body:not(.wide) .dock::-webkit-scrollbar {
-  display:none
-}
-
-body:not(.wide) .dock .tool {
-  flex:1 0 52px
+body:not(.wide) .dock .sep {
+  display:none;
 }
 
 body:not(.wide) .dock .modes {
-  flex:2 0 102px
+  flex:none;
+  width:100%;
+  min-width:0;
+  overflow:hidden;
+  padding:2px;
+  border-radius:14px;
+}
+
+body:not(.wide) .dock .tool {
+  min-width:0;
+  width:100%;
+  flex:none;
+  padding:7px 0 6px;
+  font-size:clamp(9px,2.55vw,11px);
+  letter-spacing:-.025em;
+  border-radius:12px;
+}
+
+body:not(.wide) .dock .mode {
+  min-width:0;
+  padding:5px 0 4px;
+  font-size:clamp(9px,2.5vw,11px);
+}
+
+body:not(.wide) .dock .tool svg,
+body:not(.wide) .dock .mode svg {
+  width:clamp(17px,5vw,22px);
+  height:clamp(17px,5vw,22px);
+}
+
+body:not(.wide) .dock .modes .thumb {
+  top:2px;
+  bottom:2px;
+  left:2px;
+  width:calc(50% - 2px);
+  border-radius:12px;
+}
+
+@media(max-width:340px) {
+  body:not(.wide) .dock {
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    row-gap:3px;
+  }
+  body:not(.wide) .dock .modes {grid-column:span 2;}
+  body:not(.wide) .dock .tool,
+  body:not(.wide) .dock .mode {min-height:46px;}
+  body:not(.wide) .sheet {bottom:calc(152px + var(--safe-b));}
+  body:not(.wide) .hint {bottom:calc(175px + var(--safe-b));}
 }
 
 .tool {
@@ -507,26 +551,21 @@ body.about-open .about {
 }
 
 .tabs {
-  display:flex;
-  justify-content:space-between;
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
   gap:0;
   margin:-2px -4px 0;
   padding:0 2px;
-  overflow-x:auto;
-  scrollbar-width:none;
-  overscroll-behavior:contain
-}
-
-.tabs::-webkit-scrollbar {
-  display:none
+  overflow:visible;
 }
 
 .tabs button {
-  flex:0 0 auto;
-  padding:7px 8px 8px;
+  min-width:0;
+  width:100%;
+  padding:7px 1px 8px;
   border-radius:12px;
-  font-size:13px;
-  letter-spacing:.04em;
+  font-size:clamp(10px,2.85vw,13px);
+  letter-spacing:0;
   color:var(--ink-soft);
   position:relative;
   transition:color .2s
@@ -540,8 +579,8 @@ body.about-open .about {
 .tabs button[aria-selected=true]:after {
   content:"";
   position:absolute;
-  left:8px;
-  right:8px;
+  left:5px;
+  right:5px;
   bottom:2px;
   height:2px;
   border-radius:2px;
