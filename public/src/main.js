@@ -545,6 +545,24 @@ function createEngine({ stocking }) {
     const d=dx*dx+dy*dy+dz*dz;
     if(d<minFootDistance){minFootDistance=d;footVertex=i;}
   }
+  // Scan actual sole vertices when generating a rain footfall. Points
+  // span heel, ball and toes, so contact remains accurate in walking
+  // and running with independent leg length and ankle pitch settings.
+  const gaitSoleProbes=Array.from(new Set(
+    [-.045,-.025,0,.025,.045].flatMap(x=>
+      [-.05,.03,.10,.15,.195].map(z=>{
+        let nearest=0,distance=Infinity;
+        for(let i=0;i<restFeet.count;i++){
+          const dx=restFeet.getX(i)-x;
+          const dy=restFeet.getY(i)-.006;
+          const dz=restFeet.getZ(i)-z;
+          const d=dx*dx+dy*dy+dz*dz;
+          if(d<distance){distance=d;nearest=i;}
+        }
+        return nearest;
+      })
+    )
+  ));
   const contactProbe=new THREE.Vector3();
   const droplets = [];
   const ripples = [];
@@ -701,6 +719,7 @@ function createEngine({ stocking }) {
     pose=next;
     motionClock=0;
     lastMotionUpdate=-Infinity;
+    lastGaitImpact=-1;
     placePose(0);
     // Static ground shadows are baked once. Animated and seated poses use
     // foot contact decals instead of a frozen standing silhouette.
