@@ -85,6 +85,8 @@ const TOE_STYLES = {natural:'自然袜尖',reinforced:'加固袜尖',seamless:'�
 const clampPatternDensity=value=>Math.max(20,Math.min(200,Math.round(Number(value)||100)));
 const clampPatternRandomness=value=>Math.max(0,Math.min(100,Math.round(Number(value) || 0)));
 const SCATTERED_PATTERNS=new Set(['dots','argyle','hearts','stars','paws','lace']);
+const DENSITY_PATTERNS=new Set(['dots','argyle','net','hoops','pins',
+  'hearts','stars','paws','lace']);
 const BACKDROPS = {
   lilac: ['浅紫', '#e4dce8'], sakura: ['樱粉', '#f3d6dd'], mint: ['薄荷', '#cfe7df'],
   cream: ['奶油', '#f0e3c8'], sky: ['天蓝', '#cbdff3'], dusk: ['夜蓝', '#2a2944'],
@@ -343,10 +345,13 @@ export function initUI(engine) {
   const patternRandomnessInput=element('input',{id:'patternRandomness',type:'range',
     min:'0',max:'100',step:'5',value:'45','aria-label':'图案排列随机度'});
   const patternRandomnessValue=element('output',{id:'patternRandomnessValue'},['45%']);
+  const densityControl=row('密集度',element('div',{class:'pattern-range'},
+    [patternDensityInput,patternDensityValue]));
+  const randomnessControl=row('随机度',element('div',{class:'pattern-range'},
+    [patternRandomnessInput,patternRandomnessValue]));
+  const patternControlsHint=note('');
   const patternControls=element('div',{class:'pattern-controls'},[
-    row('密集度',element('div',{class:'pattern-range'},[patternDensityInput,patternDensityValue])),
-    row('随机度',element('div',{class:'pattern-range'},[patternRandomnessInput,patternRandomnessValue])),
-    note('波点、菱形、心形、星形与猫爪支持错列随机分布；图案之间保持最小间距。'),
+    densityControl,randomnessControl,patternControlsHint,
   ]);
   const denierRange = element('input', {id:'denierRange',type:'range',min:'5',max:'200',step:'1',value:'40','aria-label':'丝袜丹尼尔数'});
   const denierNumber = element('input', {id:'denierNumber',type:'number',min:'5',max:'200',step:'1',value:'40',inputmode:'numeric','aria-label':'输入丹尼尔数'});
@@ -486,7 +491,13 @@ export function initUI(engine) {
     patternRandomnessInput.value=String(clampPatternRandomness(leg.patternRandomness ?? 25));
     patternDensityValue.textContent=patternDensityInput.value+'%';
     patternRandomnessValue.textContent=patternRandomnessInput.value+'%';
-    patternControls.hidden=!SCATTERED_PATTERNS.has(leg.pattern);
+    patternControls.hidden=!DENSITY_PATTERNS.has(leg.pattern);
+    randomnessControl.hidden=!SCATTERED_PATTERNS.has(leg.pattern);
+    patternControlsHint.textContent=SCATTERED_PATTERNS.has(leg.pattern)
+      ? '密度调整图案数量；随机排布保留图案间距，避免波点、爱心等互相重叠。'
+      : leg.pattern==='net'
+        ? '密集度控制网孔的数量和大小，网袜脚面采用独立足部展开。'
+        : '密集度控制单位长度内的条纹数量，20% 稀疏、200% 密集。';
     const activeDenier = clampDenier(leg.denier);
     denierRange.value = String(activeDenier);
     denierNumber.value = String(activeDenier);
