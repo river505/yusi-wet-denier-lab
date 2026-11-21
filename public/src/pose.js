@@ -18,7 +18,63 @@ const poses = {
     { x: .092, yaw: 8 }],
   pigeon: [{ x: .094, yaw: -20, roll: 4.5, pitch: -9, knee: 15 },
     { x: .095, yaw: -17, roll: 4.2, pitch: -7.5, knee: 12 }],
+  // A seat height of 0.57 m gives a hip at y~0.57 and bent legs below it.
+  sitNatural: [{ x:.095, pitch:-79, knee:84, yaw:7, roll:-2, shiftY:-.32 },
+    { x:.095, pitch:-81, knee:86, yaw:6, roll:2, shiftY:-.32 }],
+  sitReach: [{ x:.095, pitch:-79, knee:37, yaw:6, roll:-1, ankle:8, shiftY:-.32 },
+    { x:.095, pitch:-80, knee:86, yaw:6, roll:2, shiftY:-.32 }],
+  sitCross: [{ x:.095, pitch:-100, knee:62, yaw:-20, roll:40, shiftY:-.32 },
+    { x:.095, pitch:-80, knee:87, yaw:8, roll:-5, shiftY:-.32 }],
 };
+const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick']);
+const seatedNames=new Set(['sitNatural','sitReach','sitCross','sitBounce','sitCrossKick']);
+export const isMotionPose = name => motionNames.has(name);
+export const isSeatedPose = name => seatedNames.has(name);
+const FRAME_COUNT=12;
+function motionConfigs(name, phase) {
+  const theta=phase*Math.PI*2;
+  const swing=Math.sin(theta);
+  const opposite=Math.sin(theta+Math.PI);
+  const bend=v=>Math.max(0,v);
+  const seated=poses.sitNatural;
+  if(name==='kick') {
+    const pulse=.5-.5*Math.cos(theta);
+    return [
+      {x:.095, pitch:-13-56*pulse, knee:15+24*(1-pulse), yaw:6, roll:-2,
+        lift:.02+.08*pulse, z:.03*pulse},
+      {x:.095,pitch:0,knee:3,yaw:7,roll:-1},
+    ];
+  }
+  if(name==='walk'||name==='run') {
+    const speed=name==='run'?1.5:1.;
+    const amp=name==='run'?39:23;
+    return [swing,opposite].map((value,i)=>({
+      x:.095, yaw:8, roll:(i?1:-1)*2, pitch:-amp*value,
+      knee:(name==='run'?13:5)+(name==='run'?57:38)*bend(value),
+      ankle:-(name==='run'?12:6)*value,
+      lift:(name==='run'?.065:.025)*bend(value),
+      z:(name==='run'?.035:.022)*value*speed,
+    }));
+  }
+  if(name==='sitBounce') {
+    const lift=Math.max(0,.5+.5*swing);
+    return seated.map((cfg,i)=>({
+      ...cfg,
+      knee:(cfg.knee||84)+ (i===0?9:6)*Math.sin(theta+(i?Math.PI*.45:0)),
+      ankle:-5+(i===0?10:6)*swing,
+      shiftY:-.32 + (i===0?.025:.010)*lift,
+    }));
+  }
+  if(name==='sitCrossKick') {
+    const pulse=.5-.5*Math.cos(theta);
+    return [
+      {...poses.sitCross[0], pitch:-100-7*pulse,
+       knee:62-48*pulse, ankle:9*pulse},
+      {...poses.sitCross[1]},
+    ];
+  }
+  return poses.step;
+}
 
 function smoothstep(lower, upper, value) {
   const t = Math.max(0, Math.min(1, (value - lower) / (upper - lower)));
@@ -88,16 +144,17 @@ function soleHeight(vertices, transform) {
 const resolved = new WeakMap();
 const applied = new WeakMap();
 
-function resolvePose(restGeometry, name) {
+function resolvePose(restGeometry, name, frameIndex=0) {
   let cache = resolved.get(restGeometry);
   if (!cache) {
     cache = new Map();
     resolved.set(restGeometry, cache);
   }
-  if (cache.has(name)) return cache.get(name);
+  const key=isMotionPose(name)?name+':'+frameIndex:name;
+  if (cache.has(key)) return cache.get(key);
   const vertices = restGeometry.attributes.position.array;
   const footLevel = restGeometry.boundingBox.min.y;
-  const configs = poses[name];
+  const configs=isMotionPose(name)?motionConfigs(name,frameIndex/FRAME_COUNT):poses[name];
   const second = makeTransform(configs[1]);
   let first = makeTransform(configs[0]);
 
@@ -115,10 +172,14 @@ function resolvePose(restGeometry, name) {
 
   const result = [first, second].map((transform, leg) => ({
     transform, x: configs[leg].x * (leg === 0 ? 1 : -1),
-    y: footLevel - soleHeight(vertices, transform), z: configs[leg].z ?? 0,
+    // A seated pelvis stays on the chair. Walk/run use a small swing-foot
+    // lift over the support height, instead of gluing both feet to the floor.
+    y: Number.isFinite(configs[leg].shiftY) ? configs[leg].shiftY :
+       footLevel - soleHeight(vertices, transform) + (configs[leg].lift || 0),
+    z: configs[leg].z ?? 0,
     visible: name !== 'single' || leg === 0,
   }));
-  cache.set(name, result);
+  cache.set(key, result);
   return result;
 }
 
@@ -141,34 +202,55 @@ function transformNormal(transform, point, [x, y, z], [nx, ny, nz]) {
   return result.map(value => value / length);
 }
 
-export function applyPose(geometry, restGeometry, poseName, legIndex) {
-  const name = Object.hasOwn(poses, poseName) ? poseName : 'step';
-  const pose = resolvePose(restGeometry, name)[legIndex];
-  const { transform, x, y, z, visible } = pose;
-  const placement = { x, y, z, visible };
-  if (applied.get(geometry) === pose) return placement;
-
-  const { position, normal } = geometry.attributes;
-  const rest = restGeometry.attributes;
-  if (!pose.vertices) {
-    pose.vertices = new Float32Array(rest.position.array.length);
-    pose.normals = new Float32Array(rest.normal.array.length);
-    for (let i = 0; i < rest.position.count; i++) {
-      const offset = 3 * i;
-      const sourcePoint = rest.position.array.subarray(offset, offset + 3);
-      const sourceNormal = rest.normal.array.subarray(offset, offset + 3);
-      const point = transform(...sourcePoint);
-      pose.vertices.set(point, offset);
-      pose.normals.set(transformNormal(transform, point, sourcePoint, sourceNormal), offset);
-    }
+function ensureSample(pose, rest) {
+  if(pose.vertices)return;
+  pose.vertices=new Float32Array(rest.position.array.length);
+  pose.normals=new Float32Array(rest.normal.array.length);
+  for(let i=0;i<rest.position.count;i++) {
+    const off=i*3;
+    const p=rest.position.array.subarray(off,off+3);
+    const n=rest.normal.array.subarray(off,off+3);
+    const point=pose.transform(...p);
+    pose.vertices.set(point,off);
+    pose.normals.set(transformNormal(pose.transform,point,p,n),off);
   }
-  geometry.setAttribute('restPosition', rest.position);
-  position.array.set(pose.vertices);
-  normal.array.set(pose.normals);
-  position.needsUpdate = true;
-  normal.needsUpdate = true;
+}
+export function applyPose(geometry, restGeometry, poseName, legIndex, phase=0) {
+  const name=(Object.hasOwn(poses,poseName)||isMotionPose(poseName))?poseName:'step';
+  const animated=isMotionPose(name);
+  const step=animated ? ((phase%1+1)%1)*FRAME_COUNT : 0;
+  const first=Math.floor(step),next=(first+1)%FRAME_COUNT,t=step-first;
+  const pose=resolvePose(restGeometry,name,first)[legIndex];
+  const future=animated?resolvePose(restGeometry,name,next)[legIndex]:null;
+  const rest=restGeometry.attributes;
+  ensureSample(pose,rest);
+  if(future)ensureSample(future,rest);
+  const placement={
+    x:future?pose.x+(future.x-pose.x)*t:pose.x,
+    y:future?pose.y+(future.y-pose.y)*t:pose.y,
+    z:future?pose.z+(future.z-pose.z)*t:pose.z,
+    visible:pose.visible,
+  };
+  if(!animated && applied.get(geometry)===pose)return placement;
+  const {position,normal}=geometry.attributes;
+  // Use the original mesh's stable rest positions for wetness, patterns
+  // and cutaway gradients, even when the visible pose is animated.
+  if(!geometry.hasAttribute('restPosition'))geometry.setAttribute('restPosition',rest.position);
+  if(animated){
+    const q=1-t,p=pose.vertices,v=future.vertices,n=pose.normals,b=future.normals;
+    for(let i=0;i<position.array.length;i++){
+      position.array[i]=p[i]*q+v[i]*t;
+      normal.array[i]=n[i]*q+b[i]*t;
+    }
+  }else{
+    position.array.set(pose.vertices);
+    normal.array.set(pose.normals);
+  }
+  position.needsUpdate=true;
+  normal.needsUpdate=true;
+  // Pose changes can push the feet outside old cached bounding volumes.
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
-  applied.set(geometry, pose);
+  applied.set(geometry,pose);
   return placement;
 }
