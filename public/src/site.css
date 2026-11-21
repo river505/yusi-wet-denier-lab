@@ -714,6 +714,33 @@ body.about-open .about {
   color:var(--ink-soft);
   font-variant-numeric:tabular-nums;
 }
+.motion-amplitude {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  width:100%;
+  padding:7px 1px 2px;
+}
+.motion-amplitude .motion-property {
+  font-size:11px;
+  white-space:nowrap;
+  color:var(--ink-soft);
+}
+.motion-amplitude input[type=range] {
+  flex:1;
+  min-width:72px;
+  width:100%;
+  accent-color:#9580a5;
+  touch-action:auto;
+}
+.motion-amplitude output {
+  min-width:39px;
+  text-align:right;
+  font-size:11px;
+  color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
 .sheet-foot {
   display:flex;
   align-items:center;
