@@ -59,7 +59,7 @@ const CUFFS = {
 };
 
 const COLORS = {
-  ink: ['墨黑', '#141318'], smoke: ['烟灰', '#6c7381'], ivory: ['雪白', '#f4f1f3'],
+  ink: ['墨黑', '#141318'], smoke: ['烟灰', '#6c7381'], ivory: ['雪白', '#ffffff'],
   nude: ['肤色', '#dba585'], coffee: ['咖啡', '#5a3a2c'], wine: ['酒红', '#6e1b2e'],
   cherry: ['正红', '#c22a3a'], sakura: ['樱粉', '#f3b3c6'], taro: ['香芋紫', '#b49ad6'],
   mist: ['雾蓝', '#8fb4de'], navy: ['藏青', '#1f2a4d'], forest: ['墨绿', '#254a3c'],
