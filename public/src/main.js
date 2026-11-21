@@ -256,7 +256,10 @@ function createEngine({ stocking }) {
       vertexShader: skinVertex, fragmentShader: skinFragment,
       // Skin opacity must actually blend with the room; otherwise the
       // GLSL alpha gradient still writes an opaque cut edge into the depth buffer.
-      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      // Rendering the tube's backfaces makes the open top look like an
+      // opaque fleshy plug when seen from above. Render only the external
+      // surface; the feathered alpha provides the visual termination.
+      transparent: true, depthWrite: false, side: THREE.FrontSide,
     }));
     skinMesh.renderOrder = 0;
     group.add(skinMesh);
