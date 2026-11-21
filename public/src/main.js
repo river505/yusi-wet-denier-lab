@@ -415,7 +415,11 @@ function createEngine({ stocking }) {
   }
 
   function orbit(dx, dy) {
-    view.yaw -= dx * .009;
+    // Direct-manipulation orbit: dragging left rotates the visible subject
+    // right; dragging down lifts the subject in the viewport.
+    // The yaw sign is reversed from the legacy camera-drag scheme.
+    // Pitch was already in the requested direction and must be preserved.
+    view.yaw += dx * .009;
     view.pitch = THREE.MathUtils.clamp(view.pitch - dy * .007, -.60, 1.25);
     lastInput = performance.now();
   }
