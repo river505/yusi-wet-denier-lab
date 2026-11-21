@@ -314,7 +314,7 @@ const thongFootMask = /* glsl */`
     // Full stocking at the ankle and rear heel; upper and lower cloth
     // taper into triangular panels towards the first interdigital cleft.
     float ankleJoin = smoothstep(.100,.150,p.y);
-    float heelCup = 1.-smoothstep(-.096,-.052,p.z);
+    float heelCup = 1.-smoothstep(-.103,-.061,p.z);
     float progression = smoothstep(-.075,.191,p.z);
     float centerX = mix(.002,-.016,progression);
     // Dorsal V: wide base at front ankle, narrow apex at toe web.
@@ -337,8 +337,9 @@ const thongFootMask = /* glsl */`
     float plantarTriangle = plantarEdge*plantarSurface;
     // Thin continuous loop running through the great/second toe web
     // on top, the front interspace, and back under the ball of the foot.
-    float toeWeb = (1.-smoothstep(.003,.009,abs(p.x+.016)))*
-                   smoothstep(.153,.183,p.z);
+    float toeWeb = (1.-smoothstep(.003,.008,abs(p.x+.016)))*
+                   smoothstep(.148,.177,p.z)*
+                   (1.-smoothstep(.211,.235,p.z));
     return clamp(max(max(ankleJoin,heelCup),
                    max(max(dorsalTriangle,plantarTriangle),toeWeb)),0.,1.);
   }
@@ -575,10 +576,13 @@ export const fabricFragment = /* glsl */`
         // Exposed side toes stay SKIN-coloured rather than fake seams.
         float cover=thongFootCoverage(localPoint);
         garmentOpacity*=cover;
-        // Soft dark knitted edge where the triangular panels end.
-        float binding=smoothstep(.05,.35,cover)*
-                      (1.-smoothstep(.85,1.,cover));
-        rgb=mix(rgb,dye*.72,binding*.28);
+        // A slim knitted selvage follows both V-shaped panels. The toe
+        // loop terminates behind the nails, not across the toe tips.
+        float binding=smoothstep(.10,.35,cover)*
+                      (1.-smoothstep(.76,.98,cover));
+        rgb=mix(rgb,dye*.68,binding*.34);
+        rgb+=vec3(.045,.035,.040)*binding*
+             pow(max(0.,dot(n,normalize(light+view))),30.)*.5;
       }
       rgb+=knit*mix(1.,.24,wetness);
       // Seven fibre classes: diffuse cotton and matte, velvet nap,
@@ -723,15 +727,21 @@ export const dropletFragment = /* glsl */`
   varying vec3 facing;
   varying vec3 eyeDirection;
   void main() {
-    vec3 n = normalize(facing);
-    vec3 v = normalize(eyeDirection);
-    vec3 light = normalize(vec3(-.55,.83,.62));
-    float fresnel = pow(1.-max(0.,dot(n,v)),2.);
-    float specular = pow(max(0.,dot(n,normalize(v+light))),25.);
-    float oval = smoothstep(.12,.72,dot(n,light));
-    vec3 color = mix(vec3(.48,.49,.57),vec3(.92,.96,1.),oval);
-    color = mix(color,vec3(1.),specular*.94);
-    gl_FragColor = vec4(color,.16 + .35*fresnel + .64*specular);
+    vec3 n=normalize(facing);
+    vec3 v=normalize(eyeDirection);
+    vec3 key=normalize(vec3(-.55,.83,.62));
+    vec3 fill=normalize(vec3(.51,.35,-.67));
+    float ndv=max(0.,dot(n,v));
+    float fresnel=pow(1.-ndv,3.);
+    float keySpec=pow(max(0.,dot(n,normalize(v+key))),95.);
+    float fillSpec=pow(max(0.,dot(n,normalize(v+fill))),42.);
+    // Refractive-looking dark centre and a bright meniscus ring.
+    float lit=.5+.5*max(0.,dot(n,key));
+    vec3 color=mix(vec3(.42,.53,.59),vec3(.85,.94,.99),lit);
+    color+=vec3(1.,.99,.97)*keySpec*.83+
+           vec3(.80,.93,1.)*fillSpec*.31;
+    float alpha=clamp(.055+.53*fresnel+.69*keySpec+.23*fillSpec,0.,.93);
+    gl_FragColor=vec4(color,alpha);
     #include <colorspace_fragment>
   }
 `;
