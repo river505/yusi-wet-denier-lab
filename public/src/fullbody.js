@@ -51,6 +51,8 @@ const POSES={
 const MOTION=new Set(['kick','walk','run','sitBounce']);
 const OUTFITS={dress:'短裙套装',athletic:'运动套装',casual:'休闲长裤',swim:'连体泳装'};
 const FABRICS={sheer:'轻薄丝',matte:'哑光',gloss:'亮泽',pearl:'珠光',cotton:'棉质'};
+const LEG_TARGETS={both:'双腿',left:'左腿',right:'右腿'};
+const SOCK_LENGTHS={ankle:'短袜',knee:'及膝袜',thigh:'大腿袜',tights:'连裤袜高度'};
 const HAIRSTYLES={short:'短发',bob:'齐肩',long:'长发',ponytail:'马尾'};
 const SCENES={studio:'影棚',bath:'浴室',pool:'泳池',street:'夜雨街道'};
 
@@ -198,7 +200,8 @@ function updateWardrobe(){
       g.material.clearcoatRoughness=Math.max(.065,(leg.material==='pearl'?.12:.34)*(1-state.wet*.58));
       g.material.roughness=Math.max(.08,g.material.roughness*(1-state.wet*.46));
       g.material.opacity=Math.min(.985,g.material.opacity+(state.wet*.025));
-      g.material.needsUpdate=true;
+      // Physical-material properties can update without recompiling the
+      // shader on every rainy animation frame.
     }else{
       g.material.color.set(state.outfitColor);
       g.material.roughness=state.outfit==='swim'?.34:.67;
@@ -473,15 +476,24 @@ function renderControls(){
       '<p class="fb-section-head">基础肤色</p>'+swatches(skinColors,state.skin,'skin');
   }
   if(currentTab==='fabric'){
-    html+=options(FABRICS,state.material,'material')+
+    const side=state.stockingLegs[state.legTarget==='right'?1:0];
+    html+='<p class="fb-section-head">独立腿部材质</p>'+
+      options(LEG_TARGETS,state.legTarget,'legTarget')+
+      options(FABRICS,side.material,'material')+
+      '<p class="fb-section-head">丝袜长度</p>'+options(SOCK_LENGTHS,side.length,'length')+
       '<div class="fb-control"><label>丝袜层</label><select data-field="stockings">'+
       '<option value="true" '+(state.stockings?'selected':'')+'>显示</option><option value="false" '+(!state.stockings?'selected':'')+'>隐藏</option></select></div>'+
-      '<div class="fb-control"><label>Denier 厚度</label><input type="range" min="5" max="200" step="5" data-field="denier" value="'+state.denier+'"><output>'+state.denier+'D</output></div>'+
+      '<div class="fb-control"><label>Denier 厚度</label><input type="range" min="5" max="200" step="5" data-field="denier" value="'+side.denier+'"><output>'+side.denier+'D</output></div>'+
       '<div class="fb-control"><label>湿润程度</label><input type="range" min="0" max="100" step="1" data-field="wet" value="'+Math.round(state.wet*100)+'"><output>'+Math.round(state.wet*100)+'%</output></div>'+
-      '<p class="fb-section-head">织物颜色</p>'+swatches(clothingColors,state.fabricColor,'fabricColor');
+      '<p class="fb-section-head">织物颜色</p>'+swatches(clothingColors,side.color,'fabricColor')+
+      '<p class="fb-note">左右腿可设置不同的颜色、厚度、长度和材质；湿润程度仍统一控制。</p>';
   }
   if(currentTab==='pose'){
+    const footIndex=state.footTarget==='right'?1:0;
     html+=options(POSES,state.pose,'pose')+
+      '<p class="fb-section-head">脚面倾斜与双脚独立调节</p>'+
+      options(LEG_TARGETS,state.footTarget||'both','footTarget')+
+      '<div class="fb-control"><label>脚面俯仰</label><input type="range" min="-35" max="35" step="1" data-field="footAngle" value="'+state.footPitch[footIndex]+'"><output>'+state.footPitch[footIndex]+'°</output></div>'+
       '<div class="fb-control"><label>动作幅度</label><input type="range" min="20" max="200" step="10" data-field="amplitude" value="'+state.amplitude+'"><output>'+state.amplitude+'%</output></div>'+
       '<div class="fb-control"><label>动作速度</label><input type="range" min="30" max="200" step="10" data-field="speed" value="'+state.speed+'"><output>'+state.speed+'%</output></div>';
   }
@@ -490,6 +502,15 @@ function renderControls(){
   container.innerHTML=html;
 }
 function assignPick(field,value){
+  if(['material','fabricColor','length'].includes(field)){
+    const key=field==='fabricColor'?'color':field;
+    state.stockingLegs.forEach((leg,i)=>{
+      if(state.legTarget==='both'||state.legTarget===(i===0?'left':'right'))leg[key]=value;
+    });
+    updateWardrobe();
+    changePearlMaterial();
+    save();renderControls();return;
+  }
   const parts=field.split('.');
   if(parts.length===2)state[parts[0]][parts[1]]=value;
   else state[field]=value;
@@ -518,10 +539,21 @@ $('fbControls').addEventListener('input',e=>{
     }else if(group==='face')refreshShape();
   }else if(el.dataset.field){
     const key=el.dataset.field;
-    state[key]=key==='stockings'?(el.value==='true'):key==='wet'?num(el.value,0,100)/100:Number(el.value);
+    const value=key==='stockings'?(el.value==='true'):
+      key==='wet'?num(el.value,0,100)/100:Number(el.value);
+    if(key==='footAngle'){
+      state.footPitch=state.footPitch.map((old,i)=>
+        state.footTarget==='both'||state.footTarget===(i===0?'left':'right')?num(value,-35,35):old);
+      needPose=true;
+    }else if(key==='denier'){
+      state.stockingLegs.forEach((leg,i)=>{
+        if(state.legTarget==='both'||state.legTarget===(i===0?'left':'right'))leg.denier=num(value,5,200);
+      });
+      updateWardrobe();
+    }else state[key]=value;
     const output=el.parentElement.querySelector('output');
-    if(output)output.textContent=el.value+(key==='denier'?'D':'%');
-    if(key==='denier'||key==='wet'||key==='stockings')updateWardrobe();
+    if(output)output.textContent=el.value+(key==='denier'?'D':key==='footAngle'?'°':'%');
+    if(key==='wet'||key==='stockings')updateWardrobe();
   }
   save();
 });
@@ -570,8 +602,17 @@ function animate(timestamp){
   if(MOTION.has(state.pose))animClock+=dt;
   if(needShape)refreshShape();
   if(needPose||(MOTION.has(state.pose)&&timestamp-lastAnimate>52)){updatePose(animClock);lastAnimate=timestamp;}
-  if(garments.length){const sh=garments.find(x=>x.name==='stocking')?.material.userData.shader;
-    if(sh){sh.uniforms.atelierWet.value=state.wet;sh.uniforms.atelierPearl.value=state.material==='pearl'?1:0;}}
+  if(garments.length){
+    for(const garment of garments.filter(x=>x.name.startsWith('stocking'))){
+      const i=garment.name==='stockingR'?1:0;
+      const sh=garment.material.userData.shader;
+      if(sh){
+        sh.uniforms.atelierWet.value=state.wet;
+        sh.uniforms.atelierPearl.value=state.stockingLegs[i].material==='pearl'?1:0;
+        sh.uniforms.atelierLength.value=({ankle:.19,knee:.56,thigh:.93,tights:1.10})[state.stockingLegs[i].length]||.93;
+      }
+    }
+  }
   setCamera();
   renderer.render(scene,camera);
 }
