@@ -11,20 +11,32 @@ const POSES = {
   lieSpread:'平躺张腿',
   tiptoeShake:'踮脚抖腿',bendTiptoeShake:'屈膝踮脚抖腿',
   pigeonTiptoeShake:'内八踮脚抖腿',
+  stepPoint:'一前一后足尖点地',stepPointShake:'一前一后足尖点地抖腿',
 };
 const STANDING_POSES={
   ...Object.fromEntries(Object.entries(POSES).slice(0,9)),
   tiptoeShake:POSES.tiptoeShake,bendTiptoeShake:POSES.bendTiptoeShake,
   pigeonTiptoeShake:POSES.pigeonTiptoeShake,
+  stepPoint:POSES.stepPoint,stepPointShake:POSES.stepPointShake,
 };
 const SEATED_POSES=Object.fromEntries(Object.entries(POSES).slice(9,12));
 const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(12,17));
 const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(17,24));
-const isMotionName=name=>Object.hasOwn(MOTION_POSES,name)||name==='tiptoeShake'||name==='bendTiptoeShake'||name==='pigeonTiptoeShake';
+const isMotionName=name=>Object.hasOwn(MOTION_POSES,name)||name==='tiptoeShake'||name==='bendTiptoeShake'||name==='pigeonTiptoeShake'||name==='stepPointShake';
 const isLyingName=name=>Object.hasOwn(LYING_POSES,name);
 const MOTION_KEYS=Object.keys(MOTION_POSES);
 const BEND_KEYS=['bendForward','bendTiptoe'];
-const AMPLITUDE_KEYS=[...MOTION_KEYS,...BEND_KEYS,'tiptoeShake','bendTiptoeShake','pigeonTiptoeShake'];
+const AMPLITUDE_KEYS=[...MOTION_KEYS,...BEND_KEYS,'tiptoeShake','bendTiptoeShake','pigeonTiptoeShake','stepPointShake'];
+const TOE_MOTION_POSES=new Set(['tiptoeShake','bendTiptoeShake','pigeonTiptoeShake','stepPointShake']);
+const DEFAULT_FOOT_MOTION={lateral:100,forward:100,heel:100};
+const DEFAULT_LEG_MORPH={length:100,height:100,thigh:100,calf:100};
+const MORPH_BOUNDS={length:[82,122],height:[80,130],thigh:[75,135],calf:[75,135]};
+const clampPercent=(value,min,max,fallback=100)=>Math.max(min,Math.min(max,
+  Math.round(Number.isFinite(Number(value))&&value!==''?Number(value):fallback)));
+const normalizeFootMotion=value=>Object.fromEntries(Object.keys(DEFAULT_FOOT_MOTION)
+  .map(key=>[key,clampPercent(value?.[key],0,200)]));
+const normalizeLegMorph=value=>Object.fromEntries(Object.entries(MORPH_BOUNDS)
+  .map(([key,[min,max]])=>[key,clampPercent(value?.[key],min,max)]));
 const isBendName=name=>BEND_KEYS.includes(name);
 const isAdjustableName=name=>isMotionName(name)||isBendName(name);
 const defaultAmplitudes=()=>Object.fromEntries(AMPLITUDE_KEYS.map(name=>[name,100]));
@@ -189,7 +201,9 @@ function serializeLook(state) {
   const amplitudes=AMPLITUDE_KEYS.map(name=>clampAmplitude(state.motionAmplitudes?.[name])).join('-');
   return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs,
     encodeColor(state.skinTone), state.skinBrightness, amplitudes,
-    state.footPitch.map(clampFootPitch).join(','),state.legSpacing||100].join('~');
+    state.footPitch.map(clampFootPitch).join(','),state.legSpacing||100,
+    Object.values(normalizeFootMotion(state.footMotion)).join(','),
+    Object.values(normalizeLegMorph(state.legMorph)).join(',')].join('~');
 }
 
 function deserializeLook(hash) {
@@ -197,7 +211,7 @@ function deserializeLook(hash) {
   if (!serialized) return null;
   const [version, pose, scene, backdrop, left, right = left,
     tone = 'original', brightness = '100', amps='100-100-100-100-100',
-    pitches='0,0', spacing='100'] = serialized.split('~');
+    pitches='0,0', spacing='100',foot='100,100,100',morph='100,100,100,100'] = serialized.split('~');
   const pitchParts=pitches.split(',');
   const footPitch=[clampFootPitch(pitchParts[0]),clampFootPitch(pitchParts[1])];
   const ampParts=amps.split('-');
@@ -235,6 +249,10 @@ function deserializeLook(hash) {
     motionAmplitudes,
     footPitch,
     legSpacing:Math.max(75,Math.min(155,Number(spacing)||100)),
+    footMotion:normalizeFootMotion(Object.fromEntries(Object.keys(DEFAULT_FOOT_MOTION)
+      .map((key,index)=>[key,foot.split(',')[index]]))),
+    legMorph:normalizeLegMorph(Object.fromEntries(Object.keys(DEFAULT_LEG_MORPH)
+      .map((key,index)=>[key,morph.split(',')[index]]))),
   };
 }
 
@@ -245,6 +263,7 @@ export function initUI(engine) {
     skinTone: 'original', skinBrightness: 100,
     motionAmplitudes: defaultAmplitudes(),
     footPitch:[0,0], footTarget:'both', legSpacing:100,
+    footMotion:{...DEFAULT_FOOT_MOTION},legMorph:{...DEFAULT_LEG_MORPH},
   };
   const body = document.body;
   const view = get('#view');
@@ -269,6 +288,32 @@ export function initUI(engine) {
   const footPitchValue=element('output',{id:'footPitchValue'},['0°']);
   const footPitchHint=note('0° 是当前姿势默认角度；平躺时保持自然的约 90° 踝角。');
   const footPitchTargets=choices('footTarget',{'both':'双脚','0':'左脚','1':'右脚'});
+  function percentControl(id,label,min,max,step,value){
+    const slider=element('input',{id,type:'range',min:String(min),max:String(max),
+      step:String(step),value:String(value),'aria-label':label});
+    const output=element('output',{id:id+'Value'},[value+'%']);
+    return {slider,output,node:row(label,element('div',{class:'pose-range'},[slider,output]))};
+  }
+  const footMoveInputs={
+    lateral:percentControl('footLateral','左右微动',0,200,10,100),
+    forward:percentControl('footForward','前后微动',0,200,10,100),
+    heel:percentControl('heelMotion','脚跟活动',0,200,10,100),
+  };
+  const footMotionPanel=element('div',{id:'footMotionPanel',class:'pose-controls'},[
+    ...Object.values(footMoveInputs).map(control=>control.node),
+    note('足尖贴地允许前后、左右轻微移动；脚跟通过踝关节抬落，0% 可关闭对应运动。'),
+  ]);
+  const legMorphInputs={
+    length:percentControl('legLength','腿部长度',82,122,1,100),
+    height:percentControl('modelHeight','整体高度',80,130,1,100),
+    thigh:percentControl('thighWidth','大腿粗细',75,135,1,100),
+    calf:percentControl('calfWidth','小腿粗细',75,135,1,100),
+  };
+  const legMorphPanel=element('div',{class:'pose-controls'},[
+    ...Object.values(legMorphInputs).map(control=>control.node),
+    button('腿型复位',{id:'legMorphReset',class:'pill'}),
+    note('腿长沿髋、膝、踝骨段调整；高度控制整体比例，粗细独立调整大腿与小腿。'),
+  ]);
   const motionToggle = button('暂停动作',{id:'motionToggle'});
   const motionSpeedInput=element('input',{id:'motionSpeed',type:'range',min:'0.5',
     max:'2',step:'0.1',value:'1','aria-label':'动作播放速度'});
@@ -334,6 +379,8 @@ export function initUI(engine) {
       ])),
       footPitchHint,
       row('动作 / 幅度',motionControl),
+      footMotionPanel,
+      row('腿型设置',legMorphPanel),
       note('所有站姿、坐姿、躺姿及动态动作均使用脚面俯仰设置；左右脚可独立控制。','pane-hint keys'),
     ],
     preset: [presetChoices],
@@ -477,6 +524,15 @@ export function initUI(engine) {
     motionToggle.textContent=motionPlaying?'暂停动作':'继续动作';
     motionAmplitudeInput.value=String(clampAmplitude(state.motionAmplitudes[state.pose]));
     motionAmplitudeValue.textContent=motionAmplitudeInput.value+'%';
+    footMotionPanel.hidden=!TOE_MOTION_POSES.has(state.pose);
+    for(const [key,control] of Object.entries(footMoveInputs)){
+      control.slider.value=String(state.footMotion[key]);
+      control.output.textContent=state.footMotion[key]+'%';
+    }
+    for(const [key,control] of Object.entries(legMorphInputs)){
+      control.slider.value=String(state.legMorph[key]);
+      control.output.textContent=state.legMorph[key]+'%';
+    }
     syncChoices(materials, 'target', state.target);
     foot.classList.toggle('no-target', state.tab === 'pose');
     const inactive = ['velvet', 'cotton', 'latex'].includes(leg.material);
@@ -689,7 +745,13 @@ export function initUI(engine) {
       state.motionAmplitudes=look.motionAmplitudes;
       state.footPitch=look.footPitch;
       state.legSpacing=look.legSpacing;
+      state.footMotion=look.footMotion;
+      state.legMorph=look.legMorph;
       engine.setLegSpacing(state.legSpacing);
+      engine.setFootMotion(Object.fromEntries(Object.entries(state.footMotion)
+        .map(([key,value])=>[key,value/100])));
+      engine.setLegMorph(Object.fromEntries(Object.entries(state.legMorph)
+        .map(([key,value])=>[key,value/100])));
       engine.setFootPitch(state.footPitch);
       get('#skinBrightness').value = String(state.skinBrightness);
       engine.setSkinAppearance({tone: state.skinTone, brightness: state.skinBrightness});
@@ -836,6 +898,29 @@ export function initUI(engine) {
     const speed=Math.max(.5,Math.min(2,Number(motionSpeedInput.value)||1));
     motionSpeedValue.textContent=speed.toFixed(1)+'×';
     engine.setMotionSpeed(speed);
+  });
+  for(const [key,control] of Object.entries(footMoveInputs)){
+    control.slider.addEventListener('input',()=>{
+      state.footMotion[key]=clampPercent(control.slider.value,0,200);
+      control.output.textContent=state.footMotion[key]+'%';
+      engine.setFootMotion(Object.fromEntries(Object.entries(state.footMotion)
+        .map(([k,value])=>[k,value/100])));
+    });
+  }
+  for(const [key,control] of Object.entries(legMorphInputs)){
+    control.slider.addEventListener('input',()=>{
+      const [min,max]=MORPH_BOUNDS[key];
+      state.legMorph[key]=clampPercent(control.slider.value,min,max);
+      control.output.textContent=state.legMorph[key]+'%';
+      engine.setLegMorph(Object.fromEntries(Object.entries(state.legMorph)
+        .map(([k,value])=>[k,value/100])));
+    });
+  }
+  get('#legMorphReset').addEventListener('click',()=>{
+    state.legMorph={...DEFAULT_LEG_MORPH};
+    engine.setLegMorph(Object.fromEntries(Object.entries(state.legMorph)
+      .map(([key,value])=>[key,value/100])));
+    syncWardrobe();
   });
   motionAmplitudeInput.addEventListener('input',()=>{
     if(!isAdjustableName(state.pose))return;
