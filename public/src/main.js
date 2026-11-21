@@ -1082,9 +1082,19 @@ function createEngine({ stocking }) {
         key,THREE.MathUtils.clamp(Number(value?.[key]??1),lo,hi),
       ]));
       if(Object.keys(next).every(key=>Math.abs(next[key]-legMorph[key])<.0001))return;
+      const previousExtent=legMorph.height*(.2+.8*legMorph.length);
+      const nextExtent=next.height*(.2+.8*next.length);
+      const ratio=nextExtent/previousExtent;
       legMorph=next;
       clearMotionCache();
       placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
+      // Preserve the user's orbit rather than snapping back to a preset.
+      // Rescale distance and target so taller/longer legs stay framed on phones.
+      if(Math.abs(ratio-1)>.0001){
+        view.range=THREE.MathUtils.clamp(view.range*ratio,.23,3.2);
+        if(isLyingPose(pose))view.target.z*=ratio;
+        else view.target.y*=ratio;
+      }
       refreshStandingShadow();
     },
     setMotionPlaying(value) { motionPlaying=Boolean(value); },
