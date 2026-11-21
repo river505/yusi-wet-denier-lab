@@ -4,6 +4,7 @@ import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragm
 import { initUI } from './ui.js';
 import { applyPose, isMotionPose, isSeatedPose, isLyingPose, isAdjustableStandingPose, clearMotionCache } from './pose.js';
 import { createSpatialEnvironment } from './environment.js';
+import { makeHeelShell, updateHeelShell } from './heel-shell.js';
 
 const canvas = document.getElementById('view');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -268,6 +269,8 @@ function fabricMaterial(skinAppearance,footSurface) {
       garter: { value: 0 },
       skinOnly: { value: 0 },
       reflection: { value: 0 },
+      heelCut: { value: 0 },
+      heelPatch: { value: 0 },
       time: { value: 0 },
       stains: { value: Array.from({ length: maxStains }, () => new THREE.Vector4(0, 0, 0, 0)) },
     },
@@ -445,6 +448,7 @@ function createEngine({ stocking }) {
     wrinkles:{value:.7},
   };
   const legMeshes = [];
+  const heelTemplate=makeHeelShell(THREE,stocking);
   const models = [0, 1].map(index => {
     const group = new THREE.Group();
     // Derive a full-length inner-skin surface from the continuous stocking rest mesh.
@@ -471,6 +475,18 @@ function createEngine({ stocking }) {
     cloth.material.depthWrite = false;
     cloth.renderOrder = 1;
     group.add(cloth);
+    // Clipped MakeHuman rear-foot fabric. Keeps a rigid heel interior
+    // and meets the unmodified stocking at two precise cut planes.
+    const heelShell={...heelTemplate,geometry:heelTemplate.geometry.clone()};
+    const heelMaterial=cloth.material.clone();
+    heelMaterial.uniforms={...cloth.material.uniforms,heelPatch:{value:1}};
+    heelMaterial.side=THREE.DoubleSide;
+    heelMaterial.depthWrite=false;
+    const heelMesh=new THREE.Mesh(heelShell.geometry,heelMaterial);
+    heelMesh.renderOrder=2;
+    heelMesh.frustumCulled=false;
+    heelMesh.visible=false;
+    group.add(heelMesh);
     // Restore the original repository's outward-expanded back-face outline.
     // Keep it transparent + depth-tested; the opaque skin continues to occlude
     // the far leg. Share the deformed cloth geometry and length uniform so
@@ -481,6 +497,7 @@ function createEngine({ stocking }) {
       uniforms: {
         lengthLimit: cloth.material.uniforms.lengthLimit,
         toeStyle: cloth.material.uniforms.toeStyle,
+        heelCut:cloth.material.uniforms.heelCut,
       },
       vertexShader: outlineVertex,
       fragmentShader: outlineFragment,
@@ -492,7 +509,8 @@ function createEngine({ stocking }) {
     outline.renderOrder = 0;
     group.add(outline);
     const reflectionMaterial = new THREE.ShaderMaterial({
-      uniforms: { ...cloth.material.uniforms, reflection: { value: 0 } },
+      uniforms: {...cloth.material.uniforms,reflection:{value:0},
+        heelCut:{value:0},heelPatch:{value:0}},
       vertexShader: fabricVertex, fragmentShader: fabricFragment,
       transparent: true, depthWrite: false,
     });
@@ -512,7 +530,8 @@ function createEngine({ stocking }) {
     group.scale.x = index === 0 ? 1 : -1;
     world.add(group);
     legMeshes.push(cloth);
-    return { group, skinMesh, cloth, outline, reflection, contact, nextStain: 0 };
+    return {group,skinMesh,cloth,outline,reflection,contact,
+      heelMesh,heelShell,nextStain:0};
   });
 
   // Seated poses are shown without a chair or other seat geometry.
@@ -625,13 +644,27 @@ function createEngine({ stocking }) {
     models.forEach(({ cloth }, index) => updateFabric(cloth.material.uniforms, wardrobe[index]));
   }
 
+  function heelShellNeeded(index){
+    if(isLyingPose(pose)||isSeatedPose(pose))return false;
+    if(Math.abs(footPitch[index])>22)return true;
+    if(['tiptoe','bendTiptoe','tiptoeShake','bendTiptoeShake',
+      'pigeonTiptoeShake'].includes(pose))return true;
+    if(['point','stepPoint','stepPointShake'].includes(pose))return index===0;
+    return false;
+  }
+
   function placePose(phase=0) {
     const seated=isSeatedPose(pose),lying=isLyingPose(pose),moving=isMotionPose(pose);
-    models.forEach(({ group, skinMesh, cloth, reflection, contact }, index) => {
+    models.forEach(({group,skinMesh,cloth,heelMesh,heelShell,
+      reflection,contact},index)=>{
       applyPose(skinMesh.geometry,stocking,pose,index,phase,motionAmplitude,
         footPitch,footMotion,legMorph);
       const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase,
         motionAmplitude,footPitch,footMotion,legMorph);
+      const repair=visible&&heelShellNeeded(index);
+      cloth.material.uniforms.heelCut.value=repair?1:0;
+      heelMesh.visible=repair;
+      if(repair)updateHeelShell(heelShell,cloth.geometry);
       const scale=legMorph.height;
       group.scale.set((index===0?1:-1)*scale,scale,scale);
       // Preserve anatomical hip pivots: adjust only bilateral placement,
@@ -648,7 +681,7 @@ function createEngine({ stocking }) {
       reflection.position.set(x*legSpacing*scale,-y*scale,z*scale);
       reflection.scale.set((index===0?1:-1)*scale,-scale,scale);
       reflection.visible=visible&&!belowGround&&!seated&&!lying&&!moving&&
-        reflection.material.uniforms.reflection.value>0;
+        !repair&&reflection.material.uniforms.reflection.value>0;
     });
     floorShade.visible=!seated&&!lying&&!moving&&!belowGround;
   }
