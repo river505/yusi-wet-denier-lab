@@ -86,7 +86,7 @@ const TABS = {
 const DEFAULT_STOCKING = {
   length: 'thigh', cuff: 'lace', garter: false, material: 'sheer', denier: 40,
   pattern: 'none',color:'ink',secret:'none',wetColor:null,toeStyle:'natural',
-  patternDensity:100,patternRandomness:25,
+  patternDensity:100,patternRandomness:45,
 };
 const PRESETS = [
   ['经典黑丝', {}],
@@ -181,7 +181,7 @@ function serializeLook(state) {
   const legs = state.legs.map(leg => [
     leg.length, leg.cuff, Number(leg.garter), leg.material, leg.denier, leg.pattern,
     encodeColor(leg.color), leg.secret, encodeColor(leg.wetColor) || '-', leg.toeStyle||'natural',
-    clampPatternDensity(leg.patternDensity),clampPatternRandomness(leg.patternRandomness ?? 25),
+    clampPatternDensity(leg.patternDensity),clampPatternRandomness(leg.patternRandomness ?? 45),
   ].join('.'));
   const amplitudes=AMPLITUDE_KEYS.map(name=>clampAmplitude(state.motionAmplitudes?.[name])).join('-');
   return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs,
@@ -204,7 +204,7 @@ function deserializeLook(hash) {
   if (version !== '1') return null;
 
   const readLeg = value => {
-    const [length, cuff, garter, material, denier, pattern, color, secret, wetColor, toeStyle='natural',density='100',randomness='25'] =
+    const [length, cuff, garter, material, denier, pattern, color, secret, wetColor, toeStyle='natural',density='100',randomness='45'] =
       (value || '').split('.');
     return {
       length: Object.hasOwn(STOCKING_LENGTHS, length) ? length : 'thigh',
@@ -293,8 +293,8 @@ export function initUI(engine) {
     min:'20',max:'200',step:'5',value:'100','aria-label':'花纹密集度'});
   const patternDensityValue=element('output',{id:'patternDensityValue'},['100%']);
   const patternRandomnessInput=element('input',{id:'patternRandomness',type:'range',
-    min:'0',max:'100',step:'5',value:'25','aria-label':'图案排列随机度'});
-  const patternRandomnessValue=element('output',{id:'patternRandomnessValue'},['25%']);
+    min:'0',max:'100',step:'5',value:'45','aria-label':'图案排列随机度'});
+  const patternRandomnessValue=element('output',{id:'patternRandomnessValue'},['45%']);
   const patternControls=element('div',{class:'pattern-controls'},[
     row('密集度',element('div',{class:'pattern-range'},[patternDensityInput,patternDensityValue])),
     row('随机度',element('div',{class:'pattern-range'},[patternRandomnessInput,patternRandomnessValue])),
