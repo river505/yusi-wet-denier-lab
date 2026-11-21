@@ -214,7 +214,7 @@ function fabricMaterial(skinAppearance) {
       denier: { value: 40 },
       toeStyle: { value: 0 },
       patternDensity: { value: 1 },
-      patternRandomness: { value: .25 },
+      patternRandomness: { value: .45 },
       fabric: { value: 0 },
       cuff: { value: 1 },
       pattern: { value: 0 },
@@ -241,7 +241,7 @@ function updateFabric(uniforms, clothes) {
   uniforms.denier.value = THREE.MathUtils.clamp(Number(config.denier) || 40,5,200);
   uniforms.toeStyle.value = Math.max(0,['natural','reinforced','seamless','tabi'].indexOf(config.toeStyle));
   uniforms.patternDensity.value=THREE.MathUtils.clamp(Number(config.patternDensity)||100,20,200)/100;
-  uniforms.patternRandomness.value=THREE.MathUtils.clamp(Number(config.patternRandomness??25),0,100)/100;
+  uniforms.patternRandomness.value=THREE.MathUtils.clamp(Number(config.patternRandomness??45),0,100)/100;
   uniforms.fabric.value = Math.max(0, styles.indexOf(config.material));
   uniforms.cuff.value = config.length === 'tights' ? 0 : Math.max(0, cuffs.indexOf(config.cuff));
   uniforms.pattern.value = Math.max(0, patterns.indexOf(config.pattern));
