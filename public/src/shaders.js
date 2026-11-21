@@ -368,8 +368,6 @@ export const fabricFragment = /* glsl */`
   uniform float garter;
   uniform float skinOnly;
   uniform float reflection;
-  uniform float heelCut;
-  uniform float heelPatch;
   uniform float time;
   uniform vec4 stains[24];
   varying vec3 wetPoint;
@@ -433,11 +431,6 @@ export const fabricFragment = /* glsl */`
     return 0.;
   }
   void main() {
-    // Geometric heel patch replaces the visibly folded rear quarter.
-    // Both cut planes are expressed in immutable rest coordinates so the
-    // seam stays welded throughout gait/pointing and morph adjustments.
-    if(heelCut>.5 && heelPatch<.5 &&
-       localPoint.y<.151 && localPoint.z<.075)discard;
     vec3 n = normalize(facing);
     if (!gl_FrontFacing) n = -n;
     vec3 view = normalize(eyeDirection);
@@ -702,16 +695,6 @@ export const fabricFragment = /* glsl */`
       rgb = mix(rgb,dye,.77);
       garmentOpacity = max(garmentOpacity, .76);
     }
-    if(heelPatch>.5){
-      // Narrow woven selvage at the geometric cut; the new shell uses
-      // identical yarn parameters and wet stains as the main garment.
-      float seam=max(
-        (1.-smoothstep(.001,.004,abs(localPoint.y-.151)))*
-          (1.-smoothstep(.036,.075,localPoint.z)),
-        (1.-smoothstep(.001,.004,abs(localPoint.z-.075)))*
-          (1.-smoothstep(.110,.151,localPoint.y)));
-      rgb=mix(rgb,dye*.79,seam*.17);
-    }
     rgb *= tint;
     // Faithful to the original smoothstep range; garment optical density
     // remains independent, preventing transparency through the whole leg.
@@ -737,11 +720,9 @@ export const outlineFragment = /* glsl */`
   ${thongFootMask}
   uniform float lengthLimit;
   uniform float toeStyle;
-  uniform float heelCut;
   varying float height;
   varying vec3 originalPoint;
   void main() {
-    if(heelCut>.5 && originalPoint.y<.151 && originalPoint.z<.075)discard;
     float stocking = 1. - smoothstep(lengthLimit-.005,lengthLimit+.004,height);
     vec3 pigment = mix(vec3(.33,.16,.16),vec3(.018,.016,.023),stocking);
     float alpha = mix(.52,.91,stocking)*(1.-smoothstep(.747,.852,height));
