@@ -140,6 +140,11 @@ export function createSpatialEnvironment(T, world) {
     glow.position.set((i-1)*2.2,1.25,-4.25);street.add(glow);
   }
   let active='studio',time=0;
+  let underground = false;
+  function setUnderground(flag) {
+    underground = Boolean(flag);
+    root.visible = !underground;
+  }
   function setScene(name){
     active=groups[name]?name:'studio';
     for(const [key,g]of Object.entries(groups))g.visible=key===active;
@@ -158,5 +163,5 @@ export function createSpatialEnvironment(T, world) {
   }
   setScene('studio');
   function update(dt){time+=dt;poolWaterMat.uniforms.uTime.value=time;}
-  return{setScene,update,root,groups};
+  return{setScene,setUnderground,update,root,groups};
 }
