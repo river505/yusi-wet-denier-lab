@@ -13,7 +13,7 @@ const lengths = {
   over: [.545, .05], thigh: [.7, .05], tights: [1, .05],
 };
 const palette = {
-  ink: '#141318', smoke: '#6c7381', ivory: '#f4f1f3', nude: '#dba585',
+  ink: '#141318', smoke: '#6c7381', ivory: '#ffffff', nude: '#dba585',
   coffee: '#5a3a2c', wine: '#6e1b2e', cherry: '#c22a3a', sakura: '#f3b3c6',
   taro: '#b49ad6', mist: '#8fb4de', navy: '#1f2a4d', forest: '#254a3c',
 };
@@ -142,6 +142,47 @@ function createSound() {
     if(raining)startRain();
   }
 
+  function wetFootstep(running=false,leg=0){
+    // Sound is activated only after a user gesture, and only while
+    // raining. Two independent short noise layers reproduce the dull
+    // wet foot impact and the finer, brighter spray, not a tap sound.
+    if(!raining)return;
+    const c=ensureAudio(false);
+    if(!c)return;
+    const now=c.currentTime;
+    const pan=c.createStereoPanner?.();
+    if(pan){
+      pan.pan.value=leg===0?-.22:.22;
+      pan.connect(master);
+    }
+    const destination=pan||master;
+    function layer(type,initialHz,finalHz,peak,duration,rate){
+      const source=c.createBufferSource();
+      const filter=c.createBiquadFilter();
+      const gain=c.createGain();
+      source.buffer=noise;
+      source.playbackRate.value=rate;
+      filter.type=type;
+      filter.Q.value=type==='bandpass'?.48:.66;
+      filter.frequency.setValueAtTime(initialHz,now);
+      filter.frequency.exponentialRampToValueAtTime(finalHz,now+duration*.89);
+      gain.gain.setValueAtTime(.001,now);
+      gain.gain.exponentialRampToValueAtTime(peak,now+.012);
+      gain.gain.exponentialRampToValueAtTime(.001,now+duration);
+      source.connect(filter).connect(gain).connect(destination);
+      source.onended=()=>{
+        source.disconnect();filter.disconnect();gain.disconnect();
+      };
+      source.start(now);
+      source.stop(now+duration+.01);
+    }
+    const variation=.91+Math.random()*.17;
+    layer('lowpass',running?390:270,105,
+      (running?.12:.084)*variation,running?.16:.21,.64);
+    layer('bandpass',running?3150:2180,running?760:540,
+      (running?.11:.073)*variation,running?.14:.17,1.08);
+  }
+
   function stopRain(){
     if(!rainSource)return;
     const source=rainSource,gain=rainGain;
@@ -200,6 +241,7 @@ function createSound() {
     },
     bucket(){transient('tap',1);transient('bucketBody',.85);},
     dry(){transient('wipe',1);},
+    wetFootstep,
   };
 }
 
@@ -540,7 +582,10 @@ function createEngine({ stocking }) {
     panorama.visible = false;
     spatialEnvironment.setScene(environment);
     sound.setProfile(environment);
-    const tint = environment === 'street' ? '#c1afd2' : '#ffffff';
+    // The old lavender (#c1afd2) multiplication visibly dyed WHITE
+    // hosiery purple in the street scene. Keep neutral nighttime
+    // dimming while leaving the actual pigment hue untouched.
+    const tint=environment==='street'?'#e5e5e5':'#ffffff';
     const reflectAmount = { bath: .22, street: .28, pool: .12 }[environment] ?? 0;
     models.forEach(({ group, cloth, reflection }) => {
       cloth.material.uniforms.tint.value.set(tint);
