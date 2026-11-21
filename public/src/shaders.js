@@ -177,7 +177,37 @@ export const skinVertex = /* glsl */`
   }
 `;
 
+// Rest-mesh foot microgeometry: optical detail follows toe, arch and heel
+// even when the rig is posed. Expensive waves are skipped on calves/thighs.
+const footMicroSurface = /* glsl */`
+  float footTendonRidges(vec3 p){
+    if(p.y<.015||p.y>.134||p.z<-.105||p.z>.19)return 0.;
+    float upper=smoothstep(.027,.055,p.y)*
+                (1.-smoothstep(.092,.13,p.y));
+    float span=smoothstep(-.09,-.025,p.z)*
+               (1.-smoothstep(.14,.192,p.z));
+    float a=(p.x+.019)/.013;
+    float b=(p.x-.023)/.015;
+    return clamp((.75*exp(-a*a)+.49*exp(-b*b))*upper*span,0.,1.);
+  }
+  float soleFoldRidges(vec3 p){
+    if(p.y>.054||p.z<-.115||p.z>.24)return 0.;
+    float sole=1.-smoothstep(.015,.051,p.y);
+    float front=smoothstep(.067,.135,p.z)*
+                (1.-smoothstep(.215,.242,p.z));
+    float arch=smoothstep(-.07,.01,p.z)*
+               (1.-smoothstep(.1,.17,p.z));
+    float heel=1.-smoothstep(-.085,-.014,p.z);
+    float grainA=pow(.5+.5*cos(p.z*133.+.82*sin(p.x*35.)),15.);
+    float grainB=pow(.5+.5*cos(p.z*189.+1.2*sin(p.x*23.)),21.);
+    float heelFold=pow(.5+.5*cos(p.z*144.+p.x*21.),17.);
+    return sole*clamp((.9*front+.52*arch)*grainA+
+      .29*front*grainB+.35*heel*heelFold,0.,1.);
+  }
+`;
+
 export const skinFragment = /* glsl */`
+  ${footMicroSurface}
   // Toe detail is anchored to the original GLB's dorsal foot coordinates.
   // Recessed grooves and restrained nail highlights supplement the existing
   // five-toe geometry, without placing floating stickers on the feet.
@@ -209,6 +239,8 @@ export const skinFragment = /* glsl */`
   }
   uniform vec3 skinTint;
   uniform float skinLightness;
+  uniform float footDetail;
+  uniform float soleWrinkle;
   varying vec3 surfaceNormal;
   varying vec3 eyeDirection;
   varying vec3 restSurface;
@@ -233,10 +265,16 @@ export const skinFragment = /* glsl */`
     skinColor+=vec3(.038,.028,.027)*skinSpec;
     // The reference geometry contains five distinct toes. Emphasize its
     // dorsal toe separations and nail plates by lighting, not fake meshes.
-    float separation = toeGrooves(restSurface);
-    float nails = toeNailDetail(restSurface);
-    skinColor *= 1. - .145*separation;
-    skinColor = mix(skinColor,skinColor*vec3(1.07,1.045,1.04),nails*.30);
+    float separation=toeGrooves(restSurface)*footDetail;
+    float nails=toeNailDetail(restSurface)*footDetail;
+    float tendons=footTendonRidges(restSurface)*footDetail;
+    float folds=soleFoldRidges(restSurface)*soleWrinkle;
+    // Tiny concave skin details, not painted black stripes.
+    skinColor*=1.-.105*separation-.044*tendons-.09*folds;
+    skinColor-=vec3(.034,.020,.019)*folds;
+    skinColor+=vec3(.016,.013,.012)*tendons*fillLit;
+    skinColor=mix(skinColor,skinColor*vec3(1.07,1.045,1.04),
+      clamp(nails*.26,0.,.55));
     // Preserve the original cutaway transparency on both sides. The inner
     // cutaway has its OWN fixed colour ramp: natural warm skin at the base,
     // feathering toward white at the top, independently of skin swatches.
@@ -308,6 +346,7 @@ const thongFootMask = /* glsl */`
 
 export const fabricFragment = /* glsl */`
   ${thongFootMask}
+  ${footMicroSurface}
   uniform vec3 skinTint;
   uniform float skinLightness;
   uniform vec3 dye;
@@ -316,6 +355,8 @@ export const fabricFragment = /* glsl */`
   uniform float lengthLimit;
   uniform float band;
   uniform float denier;
+  uniform float footDetail;
+  uniform float soleWrinkle;
   uniform float toeStyle;
   uniform float fabric;
   uniform float cuff;
