@@ -373,6 +373,7 @@ function createEngine({ stocking }) {
   let rainClock = 0;
   let playClock = 0;
   let motionClock = 0, lastMotionUpdate = -Infinity;
+  let motionPlaying = true, motionSpeed = 1;
   const motionHz = {kick:.85,walk:1.18,run:1.85,sitBounce:2.5,sitCrossKick:1.05};
   let width = 1;
   let height = 1;
@@ -403,7 +404,8 @@ function createEngine({ stocking }) {
     models.forEach(({ group, cloth, reflection }) => {
       cloth.material.uniforms.tint.value.set(tint);
       reflection.material.uniforms.reflection.value = reflectAmount;
-      reflection.visible = group.visible && !belowGround && reflectAmount > 0;
+      reflection.visible = group.visible && !belowGround &&
+        !isMotionPose(pose) && !isSeatedPose(pose) && reflectAmount > 0;
     });
     floorShade.material.color.set({bath: '#84929f', pool: '#8a877f', street: '#252333'}[environment] ?? '#9a88a8');
   }
@@ -559,7 +561,7 @@ function createEngine({ stocking }) {
     if (nextBelowGround !== belowGround) {
       belowGround = nextBelowGround;
       spatialEnvironment.setUnderground(belowGround);
-      floorShade.visible = !belowGround;
+      floorShade.visible = !belowGround && !isSeatedPose(pose) && !isMotionPose(pose);
       models.forEach(({ contact, reflection, group }) => {
         contact.visible = !belowGround && group.visible;
         reflection.visible = !belowGround && group.visible &&
@@ -748,8 +750,8 @@ function createEngine({ stocking }) {
     const dt = Math.max(0, Math.min(.05, (time - lastTime) * .001));
     lastTime = time;
     playClock += dt * (slow ? .20 : 1);
-    if(isMotionPose(pose)){
-      motionClock += dt * (slow ? .25 : 1);
+    if(isMotionPose(pose)&&motionPlaying){
+      motionClock += dt * (slow ? .25 : 1) * motionSpeed;
       if(motionClock-lastMotionUpdate >= 1/30){
         placePose(motionClock * (motionHz[pose]||1));
         lastMotionUpdate=motionClock;
@@ -890,6 +892,8 @@ function createEngine({ stocking }) {
 
   return {
     setScene, setSkinAppearance, setMaterial, setPose, zoom, orbit, resetCamera, focusToes, bucket, dry, photo, thumbnail,
+    setMotionPlaying(value) { motionPlaying=Boolean(value); },
+    setMotionSpeed(value) { motionSpeed=THREE.MathUtils.clamp(Number(value)||1,.5,2); },
     setMode(value) { mode = value; lastInput = performance.now(); },
     setRain(value) { rain = value; },
     setSlow(value) { slow = value; },
