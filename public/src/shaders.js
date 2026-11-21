@@ -559,15 +559,36 @@ export const fabricFragment = /* glsl */`
       rgb*=1.-detailStrength*footDetail*toeCrease
         -.029*footDetail*tendon*(1.-dense*.4)
         -.068*soleWrinkle*folds*(1.-dense*.42);
-      if (fabric < 4.) {
-        if (toeStyle > .5 && toeStyle < 1.5) {
-          // Reinforcement follows the top of the original toe volume instead
-          // of creating an artificial flat colour band across the whole foot.
-          garmentOpacity = mix(garmentOpacity,min(.985,garmentOpacity+.24),toeRegion);
-          rgb = mix(rgb,dye*.85,toeRegion*.18);
-        } else if (toeStyle > 1.5 && toeStyle < 2.5) {
-          garmentOpacity = mix(garmentOpacity,max(.18,garmentOpacity*.78),toeRegion);
-        }
+      if(toeStyle>.5&&toeStyle<1.5){
+        // Reinforced toe: a woven transverse seam at the toe roots
+        // separates the cap from the instep. Both dorsal (upper) and
+        // plantar (lower) toe areas have extra pigment/knit density.
+        // Rest-coordinate mapping makes the stitching follow all poses.
+        float dorsal=smoothstep(.018,.037,localPoint.y)*
+          (1.-smoothstep(.073,.094,localPoint.y));
+        float plantar=1.-smoothstep(.011,.033,localPoint.y);
+        float toeSurface=clamp(max(dorsal,plantar),0.,1.);
+        float cap=smoothstep(.146,.177,localPoint.z)*
+          (1.-smoothstep(.238,.256,localPoint.z));
+        float yarnDensity=cap*toeSurface*
+          (.34+.19*dorsal+.23*plantar);
+        rgb=mix(rgb,dye*.49,clamp(yarnDensity,0.,.78));
+        // One continuous horizontal knit binding around the toe base.
+        // Woven interruptions follow the x axis, not another toe groove.
+        float seamZ=.154+.0016*cos(localPoint.x*19.);
+        float line=1.-smoothstep(.0018,.0047,
+          abs(localPoint.z-seamZ));
+        float stitches=.86+.14*cos(localPoint.x*335.+
+          localPoint.y*90.);
+        float binding=line*toeSurface*stitches;
+        rgb=mix(rgb,dye*.28,clamp(binding*.78,0.,.83));
+        // Light catches the raised woven boundary just behind its dark rim.
+        float lip=1.-smoothstep(.0015,.0038,
+          abs(localPoint.z-seamZ+.0045));
+        rgb+=vec3(.026,.023,.025)*lip*toeSurface;
+      }else if(toeStyle>1.5&&toeStyle<2.5&&fabric<4.){
+        garmentOpacity=mix(garmentOpacity,
+          max(.18,garmentOpacity*.78),toeRegion);
       }
       if (toeStyle > 2.5) {
         // Genuine toe-thong construction: a wide ankle-rooted dorsal V
