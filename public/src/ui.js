@@ -338,6 +338,7 @@ export function initUI(engine) {
       row('长度', choices('length', STOCKING_LENGTHS)),
       row('袜口', choices('cuff', CUFFS)),
       row('吊带', choices('garter', {'0': '不要', '1': '要（大腿袜）'})),
+      row('袜尖', choices('toeStyle', TOE_STYLES)),
     ],
     color: [
       row('丝袜颜色', swatches('color', COLORS, '自选丝袜颜色')),
@@ -356,7 +357,6 @@ export function initUI(engine) {
         Object.entries(MATERIALS).map(([key, [label]]) => [key, label]),
       ))),
       row('常用D', choices('denier', DENIERS)),
-      row('袜尖', choices('toeStyle', TOE_STYLES)),
       row('细节观察', element('div', {class:'leg-tools'}, [
         button('脚趾特写', {id:'focusToeBtn'}),
         button('恢复全景', {id:'resetToeBtn'}),
