@@ -309,8 +309,8 @@ export const fabricFragment = /* glsl */`
   float shape(float id, vec2 p) {
     vec2 f=fract(p)-.5;
     // One motif per unit cell. Jitter never exceeds 0.14 of a cell,
-    // and every random motif fits within 0.33 of its center. Therefore
-    // adjacent motifs have at least 1-2*.14-2*.33 = .06 spacing.
+    // and motif radius is at most .32/.91 = .352 after size variation.
+    // Adjacent centers remain >= .72 apart, leaving >= .016 free space.
     if(id==1.||id==2.||id==7.||id==8.||id==11.){
       vec2 cell=floor(p);
       vec2 jitter=vec2(hash(cell+vec2(13.,79.)),hash(cell+vec2(93.,17.)))*2.-1.;
