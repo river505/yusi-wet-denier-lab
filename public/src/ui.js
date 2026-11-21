@@ -255,6 +255,7 @@ export function initUI(engine) {
     ],
     material: [
       row('编辑侧', legSummary),
+      note('左右按模特自身方向划分；正面看时，画面右侧是模特左腿。'),
       row('材质', choices('material', Object.fromEntries(
         Object.entries(MATERIALS).map(([key, [label]]) => [key, label]),
       ))),
@@ -339,7 +340,9 @@ export function initUI(engine) {
     denierNumber.value = String(activeDenier);
     const toneName = state.target === '-1' ? '双腿' : state.target === '0' ? '左腿' : '右腿';
     const mixed = state.legs[0].denier !== state.legs[1].denier;
-    denierHint.textContent = state.target === '-1' && mixed
+    denierHint.textContent = state.pose === 'single' && state.target === '1'
+      ? '右腿在当前单腿姿势中隐藏。设置仍会保存，切换双腿姿势后可见。'
+      : state.target === '-1' && mixed
       ? '两腿厚度不同：左 '+clampDenier(state.legs[0].denier)+'D / 右 '+clampDenier(state.legs[1].denier)+'D。调整滑块将统一两腿厚度。'
       : '当前调整'+toneName+' · 5–200D；低D显肤色，高D织物遮盖更强。';
     state.legs.forEach((side,index) => {
