@@ -8,6 +8,7 @@ const POSES = {
   lieFlat:'平躺',lieBent:'平躺屈膝',
   lieCrossLeft:'平躺二郎腿 · 左搭右',lieCrossRight:'平躺二郎腿 · 右搭左',
   lieSideLeft:'左侧躺',lieSideRight:'右侧躺',
+  lieSpread:'平躺张腿',
   tiptoeShake:'踮脚抖腿',bendTiptoeShake:'屈膝踮脚抖腿',
 };
 const STANDING_POSES={
@@ -16,7 +17,7 @@ const STANDING_POSES={
 };
 const SEATED_POSES=Object.fromEntries(Object.entries(POSES).slice(9,12));
 const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(12,17));
-const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(17,23));
+const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(17,24));
 const isMotionName=name=>Object.hasOwn(MOTION_POSES,name)||name==='tiptoeShake'||name==='bendTiptoeShake';
 const isLyingName=name=>Object.hasOwn(LYING_POSES,name);
 const MOTION_KEYS=Object.keys(MOTION_POSES);
