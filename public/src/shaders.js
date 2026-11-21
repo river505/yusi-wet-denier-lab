@@ -192,10 +192,14 @@ export const skinFragment = /* glsl */`
     float rim = pow(1. - max(dot(n, normalize(eyeDirection)), 0.), 3.);
     vec3 skinColor = mix(vec3(.76, .56, .53), vec3(.92, .77, .72), .62);
     skinColor = skinColor * illumination + vec3(.025, .020, .018) * rim;
-    // Match the upstream Wet Denier Lab cutaway in rest coordinates.
-    // The original textile fades over .783-.861; the silhouette outline
-    // fades earlier (.747-.852). Keep skin depth-writing with MSAA coverage.
+    // Preserve the original cutaway range and independent outline fade.
+    // Both-sided light skin, rather than a black outlined interior, makes
+    // the exposed cross section readable at elevated viewing angles.
     float edgeFade = 1. - smoothstep(.783,.861,restSurface.y);
+    if (!gl_FrontFacing) {
+      // Interior has gentler fill light than the outward textile surface.
+      skinColor = mix(skinColor, vec3(.88,.75,.73), .30);
+    }
     gl_FragColor = vec4(skinColor, edgeFade);
     #include <colorspace_fragment>
   }
@@ -334,9 +338,11 @@ export const fabricFragment = /* glsl */`
         if (cuff == 3.) detail = .29+.42*pow(.5+.5*sin(angle*782.),2.);
         rgb = mix(rgb, mix(dye,vec3(.07,.055,.07),.28),detail);
       }
-      // Restore the upstream grazing-angle dark contour; the dedicated
-      // expanded BackSide outline controls its screen-space thickness.
-      rgb = mix(rgb,vec3(.023,.022,.036),(1. - smoothstep(.02,.27,incidence))*.86);
+      // Do not darken inward/grazing surfaces to nearly black. Retain a
+      // weak fabric-coloured Fresnel, with the separate outline mesh handling
+      // the external silhouette independently of the open cut interior.
+      rgb = mix(rgb, mix(skin,dye,.28),
+                (1. - smoothstep(.02,.27,incidence))*.14);
     }
     if (garter > 0. && skinOnly == 0. && h > lengthLimit && abs(fract(angle*2.+.3)-.5)<.086) {
       rgb = mix(rgb,dye,.77);
