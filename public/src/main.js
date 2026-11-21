@@ -360,6 +360,7 @@ function createEngine({ stocking }) {
   let playClock = 0;
   let motionClock = 0, lastMotionUpdate = -Infinity;
   let motionPlaying = true, motionSpeed = 1, motionAmplitude = 1;
+  const footPitch = [0,0]; // Per-leg ankle pitch in degrees, applies to every pose.
   const motionHz = {kick:.85,walk:1.18,run:1.85,sitBounce:2.5,sitCrossKick:1.05};
   let width = 1;
   let height = 1;
@@ -428,8 +429,8 @@ function createEngine({ stocking }) {
   function placePose(phase=0) {
     const seated=isSeatedPose(pose),lying=isLyingPose(pose),moving=isMotionPose(pose);
     models.forEach(({ group, skinMesh, cloth, reflection, contact }, index) => {
-      applyPose(skinMesh.geometry,stocking,pose,index,phase,motionAmplitude);
-      const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase,motionAmplitude);
+      applyPose(skinMesh.geometry,stocking,pose,index,phase,motionAmplitude,footPitch);
+      const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase,motionAmplitude,footPitch);
       group.position.set(x,y,z);
       group.visible=visible;
       group.updateMatrixWorld(true);
@@ -883,6 +884,23 @@ function createEngine({ stocking }) {
 
   return {
     setScene, setSkinAppearance, setMaterial, setPose, zoom, orbit, resetCamera, focusToes, bucket, dry, photo, thumbnail,
+    setFootPitch(values) {
+      const next = [0,1].map(i=>THREE.MathUtils.clamp(Number(values?.[i]) || 0,-35,35));
+      if(next.every((v,i)=>Math.abs(v-footPitch[i])<.001))return;
+      footPitch[0]=next[0];footPitch[1]=next[1];
+      // Static and animated poses share a rest mesh cache. Updating the
+      // ankle must invalidate BOTH deformed position and normal buffers.
+      clearMotionCache();
+      placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
+      if(!isMotionPose(pose)&&!isLyingPose(pose)&&!isSeatedPose(pose)){
+        const old = shadowCache.get(pose);
+        const fresh = bakeFloorShadow(models);
+        shadowCache.set(pose,fresh);
+        floorShade.material.map=fresh;
+        floorShade.material.needsUpdate=true;
+        if(old && old!==fresh)old.dispose();
+      }
+    },
     setMotionAmplitude(value) {
       const next=THREE.MathUtils.clamp(Number(value)||1,.2,2);
       if(Math.abs(next-motionAmplitude)<.0001)return;
