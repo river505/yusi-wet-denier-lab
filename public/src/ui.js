@@ -4,11 +4,19 @@ const POSES = {
   sitNatural:'自然坐姿',sitReach:'坐姿前伸',sitCross:'坐姿二郎腿',
   kick:'踢腿',walk:'步行',run:'跑步',
   sitBounce:'坐姿抖腿',sitCrossKick:'二郎腿前踢',
+  lieFlat:'平躺',lieBent:'平躺屈膝',
+  lieCrossLeft:'平躺二郎腿 · 左搭右',lieCrossRight:'平躺二郎腿 · 右搭左',
+  lieSideLeft:'左侧躺',lieSideRight:'右侧躺',
 };
 const STANDING_POSES=Object.fromEntries(Object.entries(POSES).slice(0,7));
 const SEATED_POSES=Object.fromEntries(Object.entries(POSES).slice(7,10));
-const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(10));
+const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(10,15));
+const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(15));
 const isMotionName=name=>Object.hasOwn(MOTION_POSES,name);
+const isLyingName=name=>Object.hasOwn(LYING_POSES,name);
+const MOTION_KEYS=Object.keys(MOTION_POSES);
+const defaultAmplitudes=()=>Object.fromEntries(MOTION_KEYS.map(name=>[name,100]));
+const clampAmplitude=value=>Math.max(20,Math.min(200,Math.round((Number(value)||100)/10)*10));
 
 const STOCKING_LENGTHS = {
   ankle: '短袜', crew: '中筒袜', knee: '及膝袜', over: '过膝袜', thigh: '大腿袜', tights: '连裤袜',
@@ -35,7 +43,7 @@ const SKIN_TONES = {
 };
 const MATERIALS = {
   sheer: ['薄丝', '遇水变透'], matte: ['哑光丝', '柔雾质感'], gloss: ['油亮', '水珠更圆更滑'],
-  pearl: ['珠光', '沾水更闪'], velvet: ['天鹅绒', '遇水变深'], cotton: ['棉袜', '吸水很快'],
+  pearl: ['珠光', '干燥即有细密微闪，随光线变化；遇水更亮'], velvet: ['天鹅绒', '遇水变深'], cotton: ['棉袜', '吸水很快'],
   latex: ['漆皮', '完全不吸水'],
 };
 
@@ -160,15 +168,20 @@ function serializeLook(state) {
     leg.length, leg.cuff, Number(leg.garter), leg.material, leg.denier, leg.pattern,
     encodeColor(leg.color), leg.secret, encodeColor(leg.wetColor) || '-', leg.toeStyle||'natural',
   ].join('.'));
+  const amplitudes=MOTION_KEYS.map(name=>clampAmplitude(state.motionAmplitudes?.[name])).join('-');
   return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs,
-    encodeColor(state.skinTone), state.skinBrightness].join('~');
+    encodeColor(state.skinTone), state.skinBrightness, amplitudes].join('~');
 }
 
 function deserializeLook(hash) {
   const serialized = new URLSearchParams(hash.slice(1)).get('look');
   if (!serialized) return null;
   const [version, pose, scene, backdrop, left, right = left,
-    tone = 'original', brightness = '100'] = serialized.split('~');
+    tone = 'original', brightness = '100', amps='100-100-100-100-100'] = serialized.split('~');
+  const ampParts=amps.split('-');
+  const motionAmplitudes=Object.fromEntries(MOTION_KEYS.map(
+    (key,index)=>[key,clampAmplitude(ampParts[index])]
+  ));
   if (version !== '1') return null;
 
   const readLeg = value => {
@@ -196,6 +209,7 @@ function deserializeLook(hash) {
     skinTone: decodeColor(tone, SKIN_TONES) || 'original',
     skinBrightness: Number.isFinite(Number(brightness))
       ? Math.max(70,Math.min(130,Number(brightness))) : 100,
+    motionAmplitudes,
   };
 }
 
@@ -204,6 +218,7 @@ export function initUI(engine) {
     pose: 'step', scene: 'studio', backdrop: 'lilac', target: '-1', tab: 'pose',
     mode: 'water', rain: false, slow: false, sound: true, legs: presetLegs(0),
     skinTone: 'original', skinBrightness: 100,
+    motionAmplitudes: defaultAmplitudes(),
   };
   const body = document.body;
   const view = get('#view');
@@ -224,9 +239,16 @@ export function initUI(engine) {
   const motionSpeedInput=element('input',{id:'motionSpeed',type:'range',min:'0.5',
     max:'2',step:'0.1',value:'1','aria-label':'动作播放速度'});
   const motionSpeedValue=element('output',{id:'motionSpeedValue'},['1.0×']);
+  const motionAmplitudeInput=element('input',{id:'motionAmplitude',type:'range',
+    min:'20',max:'200',step:'10',value:'100','aria-label':'动作摆动幅度'});
+  const motionAmplitudeValue=element('output',{id:'motionAmplitudeValue'},['100%']);
   const motionControl=element('div',{class:'motion-control'},[
     motionToggle,
     element('div',{class:'motion-speed'},[motionSpeedInput,motionSpeedValue]),
+    element('div',{class:'motion-amplitude'},[
+      element('span',{class:'motion-property'},['幅度']),
+      motionAmplitudeInput,motionAmplitudeValue,
+    ]),
   ]);
   let motionPlaying=true;
   const materialNote = note('');
@@ -255,9 +277,10 @@ export function initUI(engine) {
     pose: [
       row('站立',choices('pose',STANDING_POSES)),
       row('坐姿',choices('pose',SEATED_POSES)),
+      row('躺姿',choices('pose',LYING_POSES)),
       row('动态',choices('pose',MOTION_POSES)),
       row('播放',motionControl),
-      note('数字键 1–7 选站姿；坐姿与动作点击选择，循环动作可暂停或调节速度。','pane-hint keys'),
+      note('平躺二郎腿可选左搭右或右搭左；侧躺可选左右。动作幅度独立保存，速度和暂停单独控制。','pane-hint keys'),
     ],
     preset: [presetChoices],
     style: [
@@ -380,6 +403,8 @@ export function initUI(engine) {
     syncChoices(materials, 'pose', state.pose);
     motionControl.hidden = !isMotionName(state.pose);
     motionToggle.textContent=motionPlaying?'暂停动作':'继续动作';
+    motionAmplitudeInput.value=String(clampAmplitude(state.motionAmplitudes[state.pose]));
+    motionAmplitudeValue.textContent=motionAmplitudeInput.value+'%';
     syncChoices(materials, 'target', state.target);
     foot.classList.toggle('no-target', state.tab === 'pose');
     const inactive = ['velvet', 'cotton', 'latex'].includes(leg.material);
@@ -548,8 +573,13 @@ export function initUI(engine) {
   }
 
   function setPose(pose) {
+    const wasLying=isLyingName(state.pose);
     state.pose = pose;
     engine.setPose(pose);
+    if(isLyingName(pose)!==wasLying)engine.resetCamera();
+    if(isMotionName(pose)){
+      engine.setMotionAmplitude(clampAmplitude(state.motionAmplitudes[pose])/100);
+    }
     motionPlaying=true;
     engine.setMotionPlaying(true);
     syncWardrobe();
@@ -582,6 +612,7 @@ export function initUI(engine) {
       state.target = '-1';
       state.skinTone = look.skinTone;
       state.skinBrightness = look.skinBrightness;
+      state.motionAmplitudes=look.motionAmplitudes;
       get('#skinBrightness').value = String(state.skinBrightness);
       engine.setSkinAppearance({tone: state.skinTone, brightness: state.skinBrightness});
       setPose(look.pose);
@@ -708,6 +739,13 @@ export function initUI(engine) {
     const speed=Math.max(.5,Math.min(2,Number(motionSpeedInput.value)||1));
     motionSpeedValue.textContent=speed.toFixed(1)+'×';
     engine.setMotionSpeed(speed);
+  });
+  motionAmplitudeInput.addEventListener('input',()=>{
+    if(!isMotionName(state.pose))return;
+    const percent=clampAmplitude(motionAmplitudeInput.value);
+    state.motionAmplitudes[state.pose]=percent;
+    motionAmplitudeValue.textContent=percent+'%';
+    engine.setMotionAmplitude(percent/100);
   });
   materials.querySelector('[data-key="color"] input[type="color"]').addEventListener('input', event => {
     editMaterial('color', event.target.value);
