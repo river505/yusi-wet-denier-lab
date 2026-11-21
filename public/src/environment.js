@@ -48,6 +48,28 @@ export function createSpatialEnvironment(T, world) {
     const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);
     m.castShadow=false;m.receiveShadow=true;parent.add(m);return m;
   }
+  // Small radius bevels remove the toy-like perfectly sharp bathtub cutouts.
+  function roundedBox(parent,w,h,d,radius,material,x,y,z) {
+    const rad=Math.min(radius,w*.32,h*.32,d*.32);
+    const geometry=new T.BoxGeometry(w,h,d,24,10,12);
+    const position=geometry.attributes.position;
+    const normals=geometry.attributes.normal;
+    for(let i=0;i<position.count;i++) {
+      const px=position.getX(i),py=position.getY(i),pz=position.getZ(i);
+      const cx=T.MathUtils.clamp(px,-w/2+rad,w/2-rad);
+      const cy=T.MathUtils.clamp(py,-h/2+rad,h/2-rad);
+      const cz=T.MathUtils.clamp(pz,-d/2+rad,d/2-rad);
+      const dx=px-cx,dy=py-cy,dz=pz-cz;
+      const len=Math.max(.000001,Math.hypot(dx,dy,dz));
+      position.setXYZ(i,cx+dx/len*rad,cy+dy/len*rad,cz+dz/len*rad);
+      normals.setXYZ(i,dx/len,dy/len,dz/len);
+    }
+    const mesh=new T.Mesh(geometry,material);
+    mesh.position.set(x,y,z);
+    mesh.receiveShadow=true;
+    parent.add(mesh);
+    return mesh;
+  }
   function standard(hex,rough=.72,metal=0){return new T.MeshStandardMaterial({color:hex,roughness:rough,metalness:metal,side:T.DoubleSide})}
   function floorMat(kind){return new T.MeshStandardMaterial({map:tileTexture(kind),roughness:kind==='street'?.25:kind==='bath'?.42:.83,metalness:kind==='street'?.25:0,side:T.DoubleSide})}
   plane(groups.studio,20,20,floorMat('studio'));
@@ -63,8 +85,8 @@ export function createSpatialEnvironment(T, world) {
   side.rotation.y=Math.PI/2;side.position.set(-4.7,2,0);bath.add(side);
   const bathWhite=standard('#ecf2ef',.22),rimWhite=standard('#fbfbf7',.2);
   // The tub is deliberately behind the stance; floor and tub share world axes.
-  box(bath,2.28,.78,.85,bathWhite,.54,.39,-1.65);
-  box(bath,2.32,.075,.92,rimWhite,.54,.81,-1.65);
+  roundedBox(bath,2.28,.78,.85,.075,bathWhite,.54,.39,-1.65);
+  roundedBox(bath,2.32,.075,.92,.022,rimWhite,.54,.81,-1.65);
   const tubWater=new T.MeshBasicMaterial({color:'#82c9d4',transparent:true,opacity:.69});
   plane(bath,2.12,.68,tubWater,.54,.857,-1.65);
   box(bath,2.12,.055,.085,rimWhite,.54,.89,-1.19);
@@ -121,6 +143,18 @@ export function createSpatialEnvironment(T, world) {
   function setScene(name){
     active=groups[name]?name:'studio';
     for(const [key,g]of Object.entries(groups))g.visible=key===active;
+    // Fog is applied only to distant world-space geometry. Near skin, cloth,
+    // and foot contact remain sharp while remote walls/hills blend with the sky.
+    const fogSettings={
+      studio:['#f0edf1',.035],
+      bath:['#c3e0e2',.105],
+      pool:['#b9dfe5',.10],
+      street:['#363649',.13],
+    };
+    const [fogColor,fogDensity]=fogSettings[active];
+    if(!world.fog)world.fog=new T.FogExp2(fogColor,fogDensity);
+    world.fog.color.set(fogColor);
+    world.fog.density=fogDensity;
   }
   setScene('studio');
   function update(dt){time+=dt;poolWaterMat.uniforms.uTime.value=time;}
