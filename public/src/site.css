@@ -1390,3 +1390,12 @@ body.fine .pane-hint.keys {
 .pattern-range input[type="range"]{min-width:0;flex:1;max-width:100%;accent-color:#9580a5;touch-action:pan-y}
 .pattern-range output{flex:0 0 43px;font-size:11px;font-variant-numeric:tabular-nums;text-align:right;color:var(--ink)}
 .motion-control button[hidden]{display:none!important}
+
+/* Responsive leg proportions and grounded motion parameters. */
+.pose-controls{display:grid;gap:8px;width:100%;min-width:0;padding:5px 0}
+.pose-controls[hidden]{display:none!important}
+.pose-controls .row{min-width:0}
+.pose-range{display:flex;align-items:center;gap:8px;min-width:0;width:100%;max-width:100%}
+.pose-range input[type=range]{flex:1;min-width:0;width:100%;accent-color:#9580a5;touch-action:pan-y}
+.pose-range output{min-width:44px;font-size:11px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink)}
+.pose-controls .pill{justify-self:start}
