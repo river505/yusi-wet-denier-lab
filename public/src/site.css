@@ -1400,17 +1400,28 @@ body.fine .pane-hint.keys {
 .pose-range output{min-width:44px;font-size:11px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink)}
 .pose-controls .pill{justify-self:start}
 
-/* On phones, reserve a real upper preview area even with long material
-   controls: the new camera fits both legs inside this unobstructed region.
-   Overflowing controls remain scrollable instead of burying the feet. */
+/* Phone: every bottom navigation sheet uses the same content-height
+   ceiling as the existing Pattern/Easter-egg wardrobe panes (34dvh/250px).
+   Allow ~100px for tab bar, footer and padding, but reserve at least 40dvh
+   of visible stage above the sheet. Long controls scroll INSIDE the pane. */
 @media (max-width:599px) {
   body:not(.wide) .sheet {
-    max-height:max(210px,calc(100dvh - max(240px,37dvh) - 105px - var(--safe-b)));
-    overflow-y:auto;
+    max-height:min(
+      calc(min(34dvh,250px) + 100px),
+      calc(100dvh - max(270px,40dvh) - 105px - var(--safe-b))
+    );
+    grid-template-rows:auto minmax(0,1fr) auto;
+    overflow:hidden;
     overscroll-behavior:contain;
   }
   body:not(.wide) .sheet .panes {
     min-height:0;
-    flex-shrink:1;
+    max-height:min(34dvh,250px);
+    overflow-y:auto;
+    overscroll-behavior:contain;
+  }
+  body:not(.wide) #scenes {
+    overflow-y:auto;
+    grid-template-rows:none;
   }
 }
