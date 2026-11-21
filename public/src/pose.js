@@ -138,8 +138,11 @@ function makeTransform(config) {
   // down this world-leveling is anatomically wrong: it can align the foot
   // with the shin. For supine/side-lying poses retain the neutral 90-degree
   // ankle joint by letting the foot follow the lower-leg rotation.
+  // The original MakeHuman foot-to-shin rest angle, measured on the mesh
+  // ankle and toe landmarks, is ~69 degrees. Correct its neutral ankle by
+  // -21 degrees for a natural ~90-degree lying foot relative to the calf.
   const solePitch = config.followShin
-    ? 0
+    ? -21 * radians
     : Math.asin(Math.max(-1, Math.min(1, swing(...flexKnee(0, 0, 1))[1])));
   const soleRoll = config.followShin
     ? 0
