@@ -637,9 +637,14 @@ function createEngine({ stocking }) {
     const sheetTop=sheet?.getBoundingClientRect().top??rect.bottom;
     const bottom=Math.min(sheetTop-16,(dock?.getBoundingClientRect().top??rect.bottom)-12);
     const top=Math.max(rect.top+78,rect.top+rect.height*.075);
+    const freeHeight=Math.max(70,bottom-top);
+    // Bias the full-leg preview upward by another 10–42 CSS pixels.
+    // This offset is included in the perspective-fit budget, so lifting
+    // the model never clips the thigh or toes against the top safe edge.
+    const lift=Math.min(42,freeHeight*.15);
     return {top:top-rect.top,bottom:bottom-rect.top,
-      height:Math.max(70,bottom-top),width:Math.max(120,rect.width-38),
-      sheetTop};
+      height:freeHeight,width:Math.max(120,rect.width-38),
+      lift,sheetTop};
   }
   function fitPanelCamera(){
     if(!panelCamera.active||document.body.classList.contains('wide'))return;
@@ -659,7 +664,10 @@ function createEngine({ stocking }) {
       const v=point.sub(center);
       return [Math.abs(v.dot(right)),Math.abs(v.dot(up)),v.dot(towardsCamera)];
     });
-    const halfWidth=region.width*.46,halfHeight=region.height*.46;
+    const halfWidth=region.width*.46;
+    // Reserve enough projected space above the lifted centre for the
+    // entire upper-leg silhouette; the bottom has more spare room.
+    const halfHeight=Math.max(14,(region.height*.5-region.lift)*.91);
     const fits=distance=>projected.every(([x,y,z])=>{
       const depth=distance-z;
       return depth>.08&&x*focal/depth<=halfWidth&&y*focal/depth<=halfHeight;
@@ -819,7 +827,7 @@ function createEngine({ stocking }) {
         // Pan into the unobstructed strip ABOVE the sheet, rather than
         // limiting vertical movement to 16vh as the old camera did.
         verticalOffset=THREE.MathUtils.clamp(
-          height*.5-(r.top+r.bottom)*.5,0,height*.44);
+          height*.5-(r.top+r.bottom)*.5+r.lift,0,height*.48);
       }else{
         const dockTop=document.querySelector('.dock')?.getBoundingClientRect().top??rect.bottom;
         const visibleHeight=Math.max(height*.32,
