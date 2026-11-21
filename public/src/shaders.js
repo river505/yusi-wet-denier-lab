@@ -196,13 +196,13 @@ export const skinFragment = /* glsl */`
     vec3 skinColor = mix(vec3(.68,.46,.45),vec3(.89,.73,.72),modeled);
     skinColor *= mix(vec3(.88,.80,.84),vec3(1.),smoothstep(.01,.70,incidence));
     skinColor *= skinTint * skinLightness;
-    // Preserve the original cutaway range and independent outline fade.
-    // Both-sided light skin, rather than a black outlined interior, makes
-    // the exposed cross section readable at elevated viewing angles.
+    // Preserve the original cutaway transparency on both sides. The inner
+    // cutaway has its OWN fixed colour ramp: natural warm skin at the base,
+    // feathering toward white at the top, independently of skin swatches.
     float edgeFade = 1. - smoothstep(.783,.861,restSurface.y);
     if (!gl_FrontFacing) {
-      // Interior has gentler fill light than the outward textile surface.
-      skinColor = mix(skinColor, vec3(.82,.66,.66)*skinTint*skinLightness, .12);
+      float whiteRamp = smoothstep(.70,.854,restSurface.y);
+      skinColor = mix(vec3(.82,.68,.67),vec3(1.0),whiteRamp);
     }
     gl_FragColor = vec4(skinColor, edgeFade);
     #include <colorspace_fragment>
