@@ -627,11 +627,43 @@ export function initUI(engine) {
     style.setProperty('--stage-x', wide ? (innerWidth + left - right) / 2 + 'px' : '50%');
   }
 
+  function sizeWardrobeToFun(){
+    if(body.classList.contains('wide')){
+      materials.style.removeProperty('--wardrobe-fun-height');
+      return;
+    }
+    const fun=panes.querySelector('[data-pane="fun"]');
+    if(!fun)return;
+    // Measure the Easter-egg pane at the exact wardrobe content width,
+    // even when another tab is selected and the real pane is hidden.
+    const probe=fun.cloneNode(true);
+    probe.removeAttribute('hidden');
+    const paneWidth=Math.max(100,panes.clientWidth||materials.clientWidth-28);
+    Object.assign(probe.style,{
+      display:'grid',position:'absolute',visibility:'hidden',
+      pointerEvents:'none',width:paneWidth+'px',height:'auto',
+      maxHeight:'none',overflow:'visible',
+    });
+    panes.appendChild(probe);
+    const funHeight=Math.max(118,Math.ceil(probe.getBoundingClientRect().height));
+    probe.remove();
+    const computed=getComputedStyle(materials);
+    const gap=parseFloat(computed.rowGap||computed.gap)||0;
+    const extra=(parseFloat(computed.paddingTop)||0)+
+      (parseFloat(computed.paddingBottom)||0)+
+      (parseFloat(computed.borderTopWidth)||0)+
+      (parseFloat(computed.borderBottomWidth)||0);
+    const exact=Math.ceil(funHeight+tabs.getBoundingClientRect().height+
+      foot.getBoundingClientRect().height+2*gap+extra);
+    materials.style.setProperty('--wardrobe-fun-height',exact+'px');
+  }
+
   function syncPanels() {
     const wardrobe = body.classList.contains('mat-open');
     const scene = body.classList.contains('scene-open');
     const about = body.classList.contains('about-open');
     body.classList.toggle('sheet-open', wardrobe || scene);
+    sizeWardrobeToFun();
     get('#matBtn').setAttribute('aria-pressed', String(wardrobe));
     get('#sceneBtn').setAttribute('aria-pressed', String(scene));
     get('#aboutBtn').setAttribute('aria-expanded', String(about));
@@ -830,10 +862,10 @@ export function initUI(engine) {
     state.tab = tab.dataset.tab;
     syncWardrobe();
     tab.scrollIntoView?.({block: 'nearest', inline: 'nearest'});
-    // Material tabs can change the sheet height; recompute the visible
-    // top region after the next layout pass.
+    // The wardrobe height is fixed to the Easter-egg tab. Switching
+    // categories only scrolls the content; never reset a manual zoom.
     requestAnimationFrame(()=>{
-      if(body.classList.contains('sheet-open'))engine.setPanelFraming(true,true);
+      if(body.classList.contains('sheet-open'))engine.setPanelFraming(true);
     });
     drawThumbnails();
   });
