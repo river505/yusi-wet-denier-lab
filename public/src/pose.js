@@ -262,18 +262,26 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1,
   let first = makeTransform({ ...configs[0], followShin,
     ankle: (configs[0].ankle || 0) + (Number(footPitch[0]) || 0) });
 
-  if (name === 'point' || name === 'stepPoint') {
-    const supportingHeight = soleHeight(vertices, second);
-    let low = 0, high = 80;
-    for (let i = 0; i < 16; i++) {
-      const angle = (low + high) / 2;
-      const option = makeTransform({ ...configs[0], knee: angle,
-        ankle: (configs[0].ankle || 0) + (Number(footPitch[0]) || 0) });
-      if (soleHeight(vertices, option) > supportingHeight) low = angle;
-      else high = angle;
+  let stepPointKnee=null;
+  if(name==='point'||name==='stepPoint'||name==='stepPointShake'){
+    // Use the SAME standing reference knee angle for the static pose and
+    // every animated frame; switching modes cannot make the toe jump.
+    const base=name==='stepPointShake'?poses.stepPoint[0]:configs[0];
+    const supportingHeight=soleHeight(vertices,second);
+    let low=0,high=80;
+    for(let i=0;i<16;i++){
+      const angle=(low+high)/2;
+      const option=makeTransform({...base,knee:angle,followShin,
+        ankle:(base.ankle||0)+(Number(footPitch[0])||0)});
+      if(soleHeight(vertices,option)>supportingHeight)low=angle;
+      else high=angle;
     }
-    first = makeTransform({ ...configs[0], knee: (low + high) / 2,
-      followShin, ankle:(configs[0].ankle||0)+(Number(footPitch[0])||0) });
+    const kneeNeutral=(low+high)/2;
+    if(name==='stepPointShake')stepPointKnee=kneeNeutral;
+    const kneeValue=kneeNeutral+(name==='stepPointShake'?
+      (configs[0].knee||0)-(base.knee||0):0);
+    first=makeTransform({...configs[0],knee:kneeValue,followShin,
+      ankle:(configs[0].ankle||0)+(Number(footPitch[0])||0)});
   }
 
   // Shared pelvis anchor for unilateral kicking. The supporting leg keeps
@@ -283,6 +291,7 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1,
   const toeSupported=name==='tiptoeShake'||name==='bendTiptoeShake'
     ||name==='pigeonTiptoeShake'||name==='stepPointShake';
   const reference=toeSupported?motionConfigs(name,0,amplitude,footMotion):null;
+  if(name==='stepPointShake')reference[0]={...reference[0],knee:stepPointKnee};
   const toeContact=[0,.022,.185];
   const result = [first, second].map((transform, leg) => {
     let x=configs[leg].x*(leg===0?1:-1);
@@ -310,8 +319,7 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1,
       z+=initialToe[2]-currentToe[2]+swayZ;
       // Front toe of the staggered stance rests at the floor itself;
       // all toe-supported animations keep zero VERTICAL displacement.
-      y=(name==='stepPointShake'?footLevel-initialToe[1]:
-        footLevel-soleHeight(vertices,referenceTransform))
+      y=footLevel-soleHeight(vertices,referenceTransform)
         +initialToe[1]-currentToe[1];
     }
     return {transform,x,y,z,visible:name!=='single'||leg===0};
