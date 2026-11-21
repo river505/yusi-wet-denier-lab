@@ -348,21 +348,38 @@ export const fabricFragment = /* glsl */`
     vec3 n = normalize(facing);
     if (!gl_FrontFacing) n = -n;
     vec3 view = normalize(eyeDirection);
-    vec3 light = normalize(vec3(-.50,.67,.72));
-    float incidence = clamp(dot(n,view),0.,1.);
-    float diffuse = dot(n,light);
-    float modeled = smoothstep(-.55,.70,diffuse);
-    float shade = mix(.68,1.06,modeled);
-    // Identical upstream default skin formula on skin and cloth surfaces.
-    vec3 skin = mix(vec3(.68,.46,.45),vec3(.89,.73,.72),modeled);
-    skin *= mix(vec3(.88,.80,.84),vec3(1.),smoothstep(.01,.70,incidence));
-    skin *= skinTint * skinLightness;
+    vec3 light=normalize(vec3(-.50,.67,.72));
+    float incidence=clamp(dot(n,view),0.,1.);
+    float diffuse=dot(n,light);
+    float modeled=smoothstep(-.55,.70,diffuse);
+    vec3 fillLight=normalize(vec3(.67,.35,-.48));
+    float secondary=max(0.,dot(n,fillLight));
+    float shade=mix(.68,1.06,modeled)*(.965+.095*secondary);
+    vec3 skin=mix(vec3(.665,.448,.444),vec3(.884,.724,.708),modeled);
+    skin*=mix(vec3(.88,.80,.84),vec3(1.),smoothstep(.01,.70,incidence));
+    skin*=.94+.105*secondary;
+    skin*=skinTint*skinLightness;
     float h = localPoint.y;
     float angle = atan(localPoint.x+.006,localPoint.z-.030) / 6.2831853 + .5;
-    vec2 textile = vec2(angle*17.,h*14.);
-    bool scattered=pattern==1.||pattern==2.||pattern==7.||pattern==8.||pattern==11.;
-    bool frequencyPattern=scattered||pattern==9.;
-    vec2 printUV=textile*(frequencyPattern?sqrt(clamp(patternDensity,.2,2.)):1.);
+    // Calves are longitudinal Y cylinders; feet are longitudinal Z
+    // cylinders. Never use atan(x,z) on the foot: it converges at the
+    // heel and turns every heart/stripe/net into radial spokes.
+    float legRadius=mix(.046,.071,smoothstep(.15,.81,h));
+    vec2 legGrid=vec2(angle*6.2831853*legRadius*32.,h*32.);
+    float footAngle=atan(localPoint.y-.045,localPoint.x+.004)/6.2831853+.5;
+    float footRadius=mix(.038,.050,smoothstep(-.08,.16,localPoint.z));
+    vec2 footGrid=vec2(footAngle*6.2831853*footRadius*32.,
+                       (localPoint.z+.115)*32.);
+    float footBlend=1.-smoothstep(.105,.165,h);
+    vec2 textile=mix(legGrid,footGrid,footBlend);
+    // Preserve legacy vertical stripes and bands on the shin, but use
+    // the correct longitudinal axis for ALL patterns on the foot.
+    bool metricMotif=pattern==1.||pattern==2.||pattern==3.||
+      pattern==7.||pattern==8.||pattern==9.||pattern==11.;
+    vec2 legacyLegGrid=vec2(angle*17.,h*14.);
+    vec2 motifGrid=metricMotif?textile:mix(legacyLegGrid,footGrid,footBlend);
+    float printedScale=sqrt(clamp(patternDensity,.2,2.));
+    vec2 printUV=motifGrid*(metricMotif?printedScale:1.);
     float knit = (hash(floor(vec2(angle*1400.,h*1500.))) - .5) * .019;
     float shine = pow(max(0.,dot(n,normalize(light+view))),mix(25.,85.,step(1.5,fabric)));
     float stocking = step(h, lengthLimit + (cuff == 1. ? .0048 * (.5+.5*cos(angle*125.6637)) : 0.));
@@ -374,9 +391,12 @@ export const fabricFragment = /* glsl */`
       // alpha hit its ceiling near 80D, making 120D/200D almost identical.
       // These are perceptual coverage controls, not a textile lab calibration.
       float d = clamp(denier,5.,200.);
-      garmentOpacity = clamp(.27+.73*(1.-exp(-d/48.)),.32,.975);
-      float dense = clamp(.30+.66*(1.-exp(-d/68.)),.33,.96);
-      if (fabric >= 4.) { garmentOpacity = .97; dense = .96; }
+      // Pigment is already mixed with underlying skin inside this shader.
+      // Compositing an additional transparent cloth layer over the skin
+      // mesh is a second skin mix, washing charcoal into opaque grey.
+      garmentOpacity=1.;
+      float dense=clamp(.30+.66*(1.-exp(-d/68.)),.33,.96);
+      if(fabric>=4.)dense=.96;
       vec3 base = mix(skin * vec3(.86,.86,.88),dye,dense);
       base *= mix(.82,1.16,modeled);
       float print = shape(pattern,printUV);
@@ -403,7 +423,8 @@ export const fabricFragment = /* glsl */`
       if (secret > 0.) wet *= 1. - .42*shape(secret,printUV);
       if (fabric >= 6.) wet = base;
       rgb = mix(base,wet,wetness);
-      garmentOpacity = mix(garmentOpacity,max(.23,garmentOpacity*.70),wetness);
+      // Local wetness changes the fibre colour and gloss, not base
+      // opacity: keep the original garment silhouette opaque.
       // Local toe-groove contrast follows the real mesh, and is partly hidden
       // by thicker hosiery. Reinforced toes add a separate graduated toe cap.
       float toeCrease = toeGrooves(localPoint);
@@ -476,8 +497,9 @@ export const fabricFragment = /* glsl */`
         float bead=smoothstep(.981,.999,beadHash)*beadShape;
         rgb += vec3(.90,.84,.88)*bead*wetness*.17;
       }
-      float fresnel = pow(1.-incidence,2.7);
-      rgb = mix(rgb, mix(skin, vec3(.92,.86,.84), .45), fresnel*.16);
+      float fresnel=pow(1.-incidence,2.7);
+      // Keep broad fibre sheen, but avoid a near-white grazing rim.
+      rgb=mix(rgb,mix(dye,vec3(.35,.32,.39),.26),fresnel*.21);
       if (edge > 0.) {
         float offset = (lengthLimit - h) / max(band,.001);
         float detail = .49;
@@ -491,13 +513,13 @@ export const fabricFragment = /* glsl */`
         }
         if (cuff == 2.) detail = .12+.78*float(abs(offset-.3)<.10 || abs(offset-.66)<.10);
         if (cuff == 3.) detail = .29+.42*pow(.5+.5*sin(angle*782.),2.);
-        rgb = mix(rgb, mix(dye,vec3(.07,.055,.07),.28),detail);
+        rgb=mix(rgb,mix(dye,vec3(.022,.019,.030),.60),clamp(detail*1.17,0.,1.));
       }
-      // Do not darken inward/grazing surfaces to nearly black. Retain a
-      // weak fabric-coloured Fresnel, with the separate outline mesh handling
-      // the external silhouette independently of the open cut interior.
-      rgb = mix(rgb, mix(skin,dye,.28),
-                (1. - smoothstep(.02,.27,incidence))*.14);
+      // Recover the original contour sculpting for calves, heels,
+      // ankles and toes, without changing the mesh itself.
+      float silhouette=1.-smoothstep(.025,.30,incidence);
+      rgb=mix(rgb,mix(vec3(.022,.021,.033),dye,.12),
+        silhouette*(fabric>=4.?.52:.68));
     }
     if (garter > 0. && skinOnly == 0. && h > lengthLimit && abs(fract(angle*2.+.3)-.5)<.086) {
       rgb = mix(rgb,dye,.77);
