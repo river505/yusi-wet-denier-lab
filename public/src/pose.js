@@ -213,15 +213,27 @@ function makeTransform(config) {
   const flexAnkle = (x, y, z) => invert(...plantar(x, y, z));
   const flexToe = xRotation(((config.toe ?? 0) - heel) * radians);
 
+  // On high-heel/pointed poses the original 35mm toe and 65mm ankle
+  // blending intervals folded the forefoot into a visible crease.
+  // Move the soft hinge into the ankle and distribute toe flex over 80mm.
+  // Normal walking/standing and the neutral GLB remain pixel-identical.
+  const strongFootFlex=Math.abs(heel)+Math.abs(config.toe??0)+
+    Math.abs(config.ankle??0)>20;
+  const toeStart=strongFootFlex?.107:.12;
+  const toeEnd=strongFootFlex?.190:.155;
+  const ankleStart=strongFootFlex?.083:.06;
+  const ankleEnd=strongFootFlex?.163:.125;
   return (x, y, z) => {
-    const point = [x, y, z];
-    if (z > .12 && y < .07) {
-      const heelWeight = smoothstep(.12, .155, z) * (1 - smoothstep(.05, .07, y));
-      rotateAround(point, toe, flexToe, heelWeight);
+    const point=[x,y,z];
+    if(z>toeStart&&y<.095){
+      const heelWeight=smoothstep(toeStart,toeEnd,z)*
+        (1.-smoothstep(.048,strongFootFlex?.09:.07,y));
+      rotateAround(point,toe,flexToe,heelWeight);
     }
-    if (y < .125) rotateAround(point, ankle, flexAnkle, 1 - smoothstep(.06, .125, y));
-    if (y < .565) rotateAround(point, knee, flexKnee, 1 - smoothstep(.415, .565, y));
-    rotateAround(point, hip, swing);
+    if(y<ankleEnd)rotateAround(point,ankle,flexAnkle,
+      1.-smoothstep(ankleStart,ankleEnd,y));
+    if(y<.565)rotateAround(point,knee,flexKnee,1.-smoothstep(.415,.565,y));
+    rotateAround(point,hip,swing);
     return point;
   };
 }
