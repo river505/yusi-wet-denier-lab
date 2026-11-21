@@ -163,13 +163,16 @@ export const stageFragment = /* glsl */`
 
 // Dedicated two-sided skin layer: the open upper leg is not a black back-face silhouette.
 export const skinVertex = /* glsl */`
+  attribute vec3 restPosition;
   varying vec3 surfaceNormal;
   varying vec3 eyeDirection;
+  varying vec3 restSurface;
   void main() {
     vec4 viewPoint = modelViewMatrix * vec4(position, 1.);
     surfaceNormal = normalize(normalMatrix * normal);
     eyeDirection = -viewPoint.xyz;
-    // Recess the full-length skin proxy by 0.9 mm beneath the garment mesh.
+    restSurface = restPosition;
+    // Recess full-length skin by 0.9 mm under the garment.
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position - normal * .0009, 1.);
   }
 `;
@@ -177,6 +180,7 @@ export const skinVertex = /* glsl */`
 export const skinFragment = /* glsl */`
   varying vec3 surfaceNormal;
   varying vec3 eyeDirection;
+  varying vec3 restSurface;
   void main() {
     vec3 n = normalize(surfaceNormal);
     if (!gl_FrontFacing) n = -n;
@@ -188,7 +192,14 @@ export const skinFragment = /* glsl */`
     float rim = pow(1. - max(dot(n, normalize(eyeDirection)), 0.), 3.);
     vec3 skinColor = mix(vec3(.76, .56, .53), vec3(.92, .77, .72), .62);
     skinColor = skinColor * illumination + vec3(.025, .020, .018) * rim;
-    gl_FragColor = vec4(skinColor, 1.);
+    // The leg is a deliberately open reference mesh, not an anatomical cutaway.
+    // A long, subtle opacity feather removes the toy-like hard upper boundary.
+    // Evaluate in rest coordinates so the fade remains attached to the thigh
+    // when switching poses or viewing the opening from above/inside.
+    float variation = .0028 * sin(restSurface.x*93. + restSurface.z*61.)
+                    + .0014 * sin(restSurface.x*178. - restSurface.z*37.);
+    float edgeFade = 1. - smoothstep(.745, .883, restSurface.y + variation);
+    gl_FragColor = vec4(skinColor, edgeFade);
     #include <colorspace_fragment>
   }
 `;
@@ -293,7 +304,9 @@ export const fabricFragment = /* glsl */`
         vec3 delta = wetPoint-mark.xyz;
         float radius = mark.w;
         float ripple = .86+.14*sin(dot(localPoint,vec3(107.,146.,82.)));
-        float blob = 1. - smoothstep(radius*.67,radius*ripple,length(delta));
+        // Diffuse wet front: soften the abrupt bright patches without losing
+        // local irregularity or the time-dependent water streaks.
+        float blob = 1. - smoothstep(radius*.35,radius*(1.28 + .12*ripple),length(delta));
         float meander = sin(delta.y*56.+mark.x*45.)*.006;
         float drip = 1.-smoothstep(radius*.06+.002,radius*.12+.004,length(vec2(delta.x+meander,delta.z*.66)));
         drip *= smoothstep(-radius*4.,-radius*.55,delta.y) * (1.-step(0.,delta.y));
@@ -332,7 +345,9 @@ export const fabricFragment = /* glsl */`
       garmentOpacity = max(garmentOpacity, .76);
     }
     rgb *= tint;
-    float fade = 1. - smoothstep(.783,.861,h);
+    // Match the translucent skin feather at the deliberately open upper thigh.
+    // Keep the stocking cuff sharp; only the underlying cutaway fades out.
+    float fade = 1. - smoothstep(.758,.883,h + .0018*sin(localPoint.x*81.+localPoint.z*53.));
     if (reflection > 0.) fade *= reflection*(1.-smoothstep(-.03,.34,h));
     gl_FragColor = vec4(max(rgb,0.), fade * (skinOnly > .5 ? 1. : garmentOpacity));
     #include <colorspace_fragment>
