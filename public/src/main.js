@@ -1023,7 +1023,10 @@ function createEngine({ stocking }) {
         lastMotionUpdate=motionClock;
       }
     }
-    backdropMaterial.uniforms.time.value = playClock;
+    backdropMaterial.uniforms.time.value=playClock;
+    // The fabric shader now animates narrow gravity-led rivulets. Update
+    // the shared time uniform on the visible garment (reflections reuse it).
+    for(const {cloth} of models)cloth.material.uniforms.time.value=playClock;
     spatialEnvironment.update(dt * (slow ? .20 : 1));
     updateCamera(dt);
     for (const pointer of pointers.values()) {
