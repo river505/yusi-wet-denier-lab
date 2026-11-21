@@ -134,8 +134,16 @@ function makeTransform(config) {
   const yaw = yRotation((config.yaw ?? 0) * radians);
   const swing = (x, y, z) => yaw(...roll(...pitch(x, y, z)));
   const flexKnee = xRotation((config.knee ?? 0) * radians);
-  const solePitch = Math.asin(Math.max(-1, Math.min(1, swing(...flexKnee(0, 0, 1))[1])));
-  const soleRoll = Math.atan2(-swing(1, 0, 0)[1], swing(...flexKnee(0, 1, 0))[1]);
+  // Standing poses auto-level the sole relative to the room. When lying
+  // down this world-leveling is anatomically wrong: it can align the foot
+  // with the shin. For supine/side-lying poses retain the neutral 90-degree
+  // ankle joint by letting the foot follow the lower-leg rotation.
+  const solePitch = config.followShin
+    ? 0
+    : Math.asin(Math.max(-1, Math.min(1, swing(...flexKnee(0, 0, 1))[1])));
+  const soleRoll = config.followShin
+    ? 0
+    : Math.atan2(-swing(1, 0, 0)[1], swing(...flexKnee(0, 1, 0))[1]);
   const heel = config.heel ?? 0;
   const plantar = xRotation(solePitch + (heel + (config.ankle ?? 0)) * radians);
   const invert = zRotation(soleRoll);
@@ -183,8 +191,9 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1) {
   const vertices = restGeometry.attributes.position.array;
   const footLevel = restGeometry.boundingBox.min.y;
   const configs=isMotionPose(name)?motionConfigs(name,frameIndex/FRAME_COUNT,amplitude):poses[name];
-  const second = makeTransform(configs[1]);
-  let first = makeTransform(configs[0]);
+  const followShin = isLyingPose(name);
+  const second = makeTransform({ ...configs[1], followShin });
+  let first = makeTransform({ ...configs[0], followShin });
 
   if (name === 'point') {
     const supportingHeight = soleHeight(vertices, second);
