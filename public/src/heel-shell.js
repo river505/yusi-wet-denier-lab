@@ -113,47 +113,57 @@ export function makeHeelShell(THREE,restGeometry){
     source.position.getX(i),source.position.getY(i),source.position.getZ(i)]);
   return {geometry,sources:new Uint16Array(sources),
     bary:new Float32Array(barycentrics),rest,anchorIndices,
+    restNormals:new Float32Array(meshNormals),
     restBasis:basis(...rest)};
 }
 export function updateHeelShell(shell,posedGeometry){
   const {geometry,sources,bary,rest,anchorIndices,restBasis}=shell;
   const pts=posedGeometry.attributes.position,ns=posedGeometry.attributes.normal;
-  const posedAnchor=anchorIndices.map(i=>[pts.getX(i),pts.getY(i),pts.getZ(i)]);
-  const posedBasis=basis(...posedAnchor);
-  const positions=geometry.attributes.position.array;
-  const normals=geometry.attributes.normal.array;
-  const restPoints=geometry.attributes.restPosition.array;
-  const count=positions.length/3;
-  for(let i=0;i<count;i++){
-    const offset=i*3;
+  const anchors=anchorIndices.map(i=>[pts.getX(i),pts.getY(i),pts.getZ(i)]);
+  const frame=basis(...anchors);
+  const P=geometry.attributes.position.array;
+  const N=geometry.attributes.normal.array;
+  const R=geometry.attributes.restPosition.array;
+  const RN=shell.restNormals;
+  const nVerts=P.length/3;
+  for(let i=0;i<nVerts;i++){
+    const j=i*3;
     let px=0,py=0,pz=0,nx=0,ny=0,nz=0;
     for(let k=0;k<3;k++){
-      const index=sources[offset+k],w=bary[offset+k];
-      px+=pts.getX(index)*w;
-      py+=pts.getY(index)*w;
-      pz+=pts.getZ(index)*w;
-      nx+=ns.getX(index)*w;
-      ny+=ns.getY(index)*w;
-      nz+=ns.getZ(index)*w;
+      const idx=sources[j+k],w=bary[j+k];
+      px+=pts.getX(idx)*w;py+=pts.getY(idx)*w;pz+=pts.getZ(idx)*w;
+      nx+=ns.getX(idx)*w;ny+=ns.getY(idx)*w;nz+=ns.getZ(idx)*w;
     }
-    const rel=[restPoints[offset]-rest[0][0],
-      restPoints[offset+1]-rest[0][1],restPoints[offset+2]-rest[0][2]];
-    const axis=restBasis.map(unit=>dot(rel,unit));
-    const rigid=[0,1,2].map(k=>posedAnchor[0][k]+
-      axis[0]*posedBasis[0][k]+axis[1]*posedBasis[1][k]+
-      axis[2]*posedBasis[2][k]);
-    // "Cut at the already normal edge": match the undisturbed cloth
-    // exactly near both cut planes; retain a smooth rigid heel behind it.
+    const dx=R[j]-rest[0][0],dy=R[j+1]-rest[0][1],
+      dz=R[j+2]-rest[0][2];
+    const a=dx*restBasis[0][0]+dy*restBasis[0][1]+dz*restBasis[0][2];
+    const b=dx*restBasis[1][0]+dy*restBasis[1][1]+dz*restBasis[1][2];
+    const c=dx*restBasis[2][0]+dy*restBasis[2][1]+dz*restBasis[2][2];
+    const rx=anchors[0][0]+a*frame[0][0]+b*frame[1][0]+c*frame[2][0];
+    const ry=anchors[0][1]+a*frame[0][1]+b*frame[1][1]+c*frame[2][1];
+    const rz=anchors[0][2]+a*frame[0][2]+b*frame[1][2]+c*frame[2][2];
+    // Exact border match by the 2 clipping planes; smooth rear heel.
     const edge=Math.max(
-      smoothstep(.092,HEEL_SHELL_Y,restPoints[offset+1]),
-      smoothstep(.022,HEEL_SHELL_Z,restPoints[offset+2]));
-    const normalLength=Math.hypot(nx,ny,nz)||1;
-    const n=[nx/normalLength,ny/normalLength,nz/normalLength];
-    for(let k=0;k<3;k++){
-      const original=[px,py,pz][k];
-      positions[offset+k]=rigid[k]*(1-edge)+original*edge+n[k]*.00165;
-      normals[offset+k]=n[k];
-    }
+      smoothstep(.092,HEEL_SHELL_Y,R[j+1]),
+      smoothstep(.022,HEEL_SHELL_Z,R[j+2]));
+    const rn0=RN[j]*restBasis[0][0]+RN[j+1]*restBasis[0][1]+
+      RN[j+2]*restBasis[0][2];
+    const rn1=RN[j]*restBasis[1][0]+RN[j+1]*restBasis[1][1]+
+      RN[j+2]*restBasis[1][2];
+    const rn2=RN[j]*restBasis[2][0]+RN[j+1]*restBasis[2][1]+
+      RN[j+2]*restBasis[2][2];
+    nx=nx*edge+(1-edge)*
+      (rn0*frame[0][0]+rn1*frame[1][0]+rn2*frame[2][0]);
+    ny=ny*edge+(1-edge)*
+      (rn0*frame[0][1]+rn1*frame[1][1]+rn2*frame[2][1]);
+    nz=nz*edge+(1-edge)*
+      (rn0*frame[0][2]+rn1*frame[1][2]+rn2*frame[2][2]);
+    const norm=1/(Math.hypot(nx,ny,nz)||1);
+    nx*=norm;ny*=norm;nz*=norm;
+    P[j]=rx*(1-edge)+px*edge+nx*.00165;
+    P[j+1]=ry*(1-edge)+py*edge+ny*.00165;
+    P[j+2]=rz*(1-edge)+pz*edge+nz*.00165;
+    N[j]=nx;N[j+1]=ny;N[j+2]=nz;
   }
   geometry.attributes.position.needsUpdate=true;
   geometry.attributes.normal.needsUpdate=true;
