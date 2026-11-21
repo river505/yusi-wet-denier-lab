@@ -21,6 +21,8 @@ const poses = {
   // Both standing bends reuse the anatomical hip, knee, and ankle pivots.
   bendForward: [{ x:.095 }, { x:.095 }],
   bendTiptoe: [{ x:.095 }, { x:.095 }],
+  tiptoeShake: [{ x:.090 }, { x:.090 }],
+  bendTiptoeShake: [{ x:.095 }, { x:.095 }],
   // A seat height of 0.57 m gives a hip at y~0.57 and bent legs below it.
   sitNatural: [{ x:.095, pitch:-79, knee:84, yaw:7, roll:-2, shiftY:-.32 },
     { x:.095, pitch:-81, knee:86, yaw:6, roll:2, shiftY:-.32 }],
@@ -37,16 +39,18 @@ const poses = {
     {x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735}],
   // The crossing foot ankle lies above the opposite raised knee. Use mirror
   // transforms for left-/right-crossing rather than rotating the whole rig.
-  lieCrossLeft: [{x:.095,pitch:-200,knee:110,roll:-15,yaw:-70,shiftY:-.700},
+  // The lateral knee and ankle must both cross the midline. A separate
+  // knee yaw prevents the lower leg from reversing direction at the knee.
+  lieCrossLeft: [{x:.095,pitch:-200,knee:110,roll:-25,yaw:100,kneeYaw:120,shiftY:-.700},
     {x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735}],
   lieCrossRight: [{x:.095,pitch:-155,knee:155,yaw:-4,shiftY:-.735},
-    {x:.095,pitch:-200,knee:110,roll:15,yaw:70,shiftY:-.700}],
+    {x:.095,pitch:-200,knee:110,roll:25,yaw:-100,kneeYaw:-120,shiftY:-.700}],
   lieSideLeft: [{x:.095,pitch:-92,knee:7,roll:65,yaw:8,shiftY:-.77},
     {x:.095,pitch:-97,knee:20,roll:65,yaw:5,shiftY:-.68}],
   lieSideRight: [{x:.095,pitch:-97,knee:20,roll:-65,yaw:-5,shiftY:-.68},
     {x:.095,pitch:-92,knee:7,roll:-65,yaw:-8,shiftY:-.77}],
 };
-const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick']);
+const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick','tiptoeShake','bendTiptoeShake']);
 const lyingNames=new Set(['lieFlat','lieBent','lieCrossLeft','lieCrossRight','lieSideLeft','lieSideRight']);
 const seatedNames=new Set(['sitNatural','sitReach','sitCross','sitBounce','sitCrossKick']);
 const standingBendNames=new Set(['bendForward','bendTiptoe']);
@@ -76,6 +80,19 @@ function motionConfigs(name, phase, amplitude=1) {
   const opposite=Math.sin(theta+Math.PI);
   const bend=v=>Math.max(0,v);
   const seated=poses.sitNatural;
+  if(name==='tiptoeShake'||name==='bendTiptoeShake') {
+    const bent=name==='bendTiptoeShake';
+    const neutral=bent?standingBendConfigs('bendTiptoe',amp):poses.tiptoe;
+    return neutral.map((cfg,i)=>{
+      const tremor=Math.sin(theta+(i===0?0:.35));
+      return {...cfg,
+        pitch:(cfg.pitch||0)-(bent?2.7:1.8)*amp*tremor,
+        knee:(cfg.knee||0)+(bent?8:5)*amp*tremor,
+        // Foot and toe position is subsequently corrected by an explicit
+        // world-space contact anchor, never by rotating the whole ankle.
+      };
+    });
+  }
   if(name==='kick') {
     const pulse=.5-.5*Math.cos(theta);
     return [
@@ -150,7 +167,9 @@ function makeTransform(config) {
   const roll = zRotation((config.roll ?? 0) * radians);
   const yaw = yRotation((config.yaw ?? 0) * radians);
   const swing = (x, y, z) => yaw(...roll(...pitch(x, y, z)));
-  const flexKnee = xRotation((config.knee ?? 0) * radians);
+  const kneeFlexion=xRotation((config.knee ?? 0) * radians);
+  const kneeTwist=yRotation((config.kneeYaw ?? 0) * radians);
+  const flexKnee=(x,y,z)=>kneeTwist(...kneeFlexion(x,y,z));
   // Standing poses auto-level the sole relative to the room. When lying
   // down this world-leveling is anatomically wrong: it can align the foot
   // with the shin. For supine/side-lying poses retain the neutral 90-degree
@@ -235,14 +254,28 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1, footPitch=[0
   // its sole planted; the swing leg rotates about the anatomical hip,
   // not its own lowest moving foot vertex.
   const supportHeight = footLevel - soleHeight(vertices, second);
-  const result = [first, second].map((transform, leg) => ({
-    transform, x: configs[leg].x * (leg === 0 ? 1 : -1),
-    y: Number.isFinite(configs[leg].shiftY) ? configs[leg].shiftY :
-       name === 'kick' ? supportHeight :
-       footLevel - soleHeight(vertices, transform) + (configs[leg].lift || 0),
-    z: configs[leg].z ?? 0,
-    visible: name !== 'single' || leg === 0,
-  }));
+  const toeFixed=name==='tiptoeShake'||name==='bendTiptoeShake';
+  const reference=toeFixed?motionConfigs(name,0,amplitude):null;
+  const toeContact=[0,.022,.185];
+  const result = [first, second].map((transform, leg) => {
+    let x=configs[leg].x*(leg===0?1:-1);
+    let y=Number.isFinite(configs[leg].shiftY)?configs[leg].shiftY:
+      name==='kick'?supportHeight:footLevel-soleHeight(vertices,transform)+(configs[leg].lift||0);
+    let z=configs[leg].z??0;
+    if(toeFixed){
+      const referenceTransform=makeTransform({...reference[leg],followShin:false,
+        ankle:(reference[leg].ankle||0)+(Number(footPitch[leg])||0)});
+      const currentToe=transform(...toeContact);
+      const initialToe=referenceTransform(...toeContact);
+      x+=initialToe[0]-currentToe[0];
+      y+=initialToe[1]-currentToe[1]+soleHeight(vertices,transform)-soleHeight(vertices,referenceTransform);
+      z+=initialToe[2]-currentToe[2];
+      // Preserve the same toe world-height across all frames. In particular,
+      // never recenter on the heel, which must be free to bounce.
+      y=footLevel-soleHeight(vertices,referenceTransform)+initialToe[1]-currentToe[1];
+    }
+    return {transform,x,y,z,visible:name!=='single'||leg===0};
+  });
   cache.set(key, result);
   return result;
 }
