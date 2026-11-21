@@ -37,13 +37,16 @@ const poses = {
     {x:.095,pitch:-90,yaw:4,shiftY:-.755}],
   lieBent: [{x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735},
     {x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735}],
-  // The crossing foot ankle lies above the opposite raised knee. Use mirror
-  // transforms for left-/right-crossing rather than rotating the whole rig.
-  // The lateral knee and ankle must both cross the midline. A separate
-  // knee yaw prevents the lower leg from reversing direction at the knee.
-  lieCrossLeft: [{x:.095,pitch:-200,knee:110,roll:-25,yaw:100,kneeYaw:120,shiftY:-.700},
+  // Restore the original left-over-right arrangement unchanged.
+  // main.js renders the right leg with group.scale.x=-1; exchanging the
+  // active leg while preserving the SAME local angles makes a true mirror.
+  // Negating yaw/roll here would reflect twice, splaying the foot outward.
+  lieCrossLeft: [{x:.095,pitch:-200,knee:110,roll:-15,yaw:-70,shiftY:-.700},
     {x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735}],
-  lieCrossRight: [{x:.095,pitch:-155,knee:155,yaw:-4,shiftY:-.735},
+  lieCrossRight: [{x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735},
+    {x:.095,pitch:-200,knee:110,roll:-15,yaw:-70,shiftY:-.700}],
+  // Preserve the previously shipped splayed right leg as a distinct pose.
+  lieSpread: [{x:.095,pitch:-155,knee:155,yaw:-4,shiftY:-.735},
     {x:.095,pitch:-200,knee:110,roll:25,yaw:-100,kneeYaw:-120,shiftY:-.700}],
   lieSideLeft: [{x:.095,pitch:-92,knee:7,roll:65,yaw:8,shiftY:-.77},
     {x:.095,pitch:-97,knee:20,roll:65,yaw:5,shiftY:-.68}],
@@ -51,7 +54,7 @@ const poses = {
     {x:.095,pitch:-92,knee:7,roll:-65,yaw:-8,shiftY:-.77}],
 };
 const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick','tiptoeShake','bendTiptoeShake']);
-const lyingNames=new Set(['lieFlat','lieBent','lieCrossLeft','lieCrossRight','lieSideLeft','lieSideRight']);
+const lyingNames=new Set(['lieFlat','lieBent','lieCrossLeft','lieCrossRight','lieSideLeft','lieSideRight','lieSpread']);
 const seatedNames=new Set(['sitNatural','sitReach','sitCross','sitBounce','sitCrossKick']);
 const standingBendNames=new Set(['bendForward','bendTiptoe']);
 export const isAdjustableStandingPose=name=>standingBendNames.has(name);
