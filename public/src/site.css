@@ -1400,28 +1400,34 @@ body.fine .pane-hint.keys {
 .pose-range output{min-width:44px;font-size:11px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink)}
 .pose-controls .pill{justify-self:start}
 
-/* Phone: every bottom navigation sheet uses the same content-height
-   ceiling as the existing Pattern/Easter-egg wardrobe panes (34dvh/250px).
-   Allow ~100px for tab bar, footer and padding, but reserve at least 40dvh
-   of visible stage above the sheet. Long controls scroll INSIDE the pane. */
+/* The *entire* wardrobe, not just its contents, is exactly as tall
+   as the Easter-egg (fun) tab. JS measures that tab at the current mobile
+   width; other tabs scroll INSIDE this invariant shell. */
 @media (max-width:599px) {
-  body:not(.wide) .sheet {
-    max-height:min(
-      calc(min(34dvh,250px) + 100px),
-      calc(100dvh - max(270px,40dvh) - 105px - var(--safe-b))
-    );
+  body:not(.wide) #materials {
+    height:min(var(--wardrobe-fun-height,260px),
+      calc(100dvh - 200px - var(--safe-b)));
+    max-height:min(var(--wardrobe-fun-height,260px),
+      calc(100dvh - 200px - var(--safe-b)));
     grid-template-rows:auto minmax(0,1fr) auto;
     overflow:hidden;
     overscroll-behavior:contain;
   }
-  body:not(.wide) .sheet .panes {
+  body:not(.wide) #materials .panes {
+    position:relative;
     min-height:0;
-    max-height:min(34dvh,250px);
+    max-height:none;
     overflow-y:auto;
     overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+  }
+  body:not(.wide) #materials .pane {
+    min-width:0;
   }
   body:not(.wide) #scenes {
+    max-height:min(330px,calc(100dvh - 200px - var(--safe-b)));
     overflow-y:auto;
-    grid-template-rows:none;
+    overscroll-behavior:contain;
   }
 }
