@@ -158,6 +158,32 @@ function overlayMaterial(col,rough=.63){
     '#include <begin_vertex>\n transformed += normal * 0.0036;');};
   return m;
 }
+function tailoredSkirtGeometry(){
+  // A continuous flared garment with a subtle twelve-fold textile hem,
+  // rather than a rigid cylinder. This is clothing geometry, not the body.
+  const columns=72,rows=14,verts=[],uv=[],indices=[];
+  for(let j=0;j<=rows;j++){
+    const t=j/rows;
+    for(let i=0;i<=columns;i++){
+      const angle=i/columns*Math.PI*2;
+      const drape=.011*Math.pow(t,1.5)*Math.sin(angle*12+1.4*t);
+      const radius=(.176+(.312-.176)*Math.pow(t,.93))+drape;
+      const y=1.047-.440*t+.003*t*Math.sin(angle*12);
+      verts.push(Math.cos(angle)*radius,y,Math.sin(angle)*radius-.008*t);
+      uv.push(i/columns,t);
+      if(i<columns&&j<rows){
+        const a=j*(columns+1)+i,b=a+columns+1;
+        indices.push(a,a+1,b,b,a+1,b+1);
+      }
+    }
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(indices);
+  g.computeVertexNormals();
+  return g;
+}
 function createGarments(){
   const definitions=[
     ['dressTop',(x,y)=>dressTop(x,y),'top'],
@@ -178,9 +204,8 @@ function createGarments(){
     mesh.renderOrder=type==='stocking'?3:2;
     model.add(mesh);garments.push(mesh);
   }
-  const skirt=new THREE.Mesh(new THREE.CylinderGeometry(.16,.31,.43,64,2,true),
-    makeMat(state.outfitColor,.60));
-  skirt.name='skirt';skirt.position.set(0,.836,0);skirt.visible=false;
+  const skirt=new THREE.Mesh(tailoredSkirtGeometry(),makeMat(state.outfitColor,.60));
+  skirt.name='skirt';skirt.visible=false;skirt.castShadow=true;skirt.receiveShadow=true;
   model.add(skirt);garments.push(skirt);
   updateWardrobe();
 }
