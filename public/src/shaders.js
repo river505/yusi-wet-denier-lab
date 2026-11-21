@@ -368,7 +368,7 @@ export const fabricFragment = /* glsl */`
         float ripple = .86+.14*sin(dot(localPoint,vec3(107.,146.,82.)));
         // Diffuse wet front: soften the abrupt bright patches without losing
         // local irregularity or the time-dependent water streaks.
-        float blob = 1. - smoothstep(radius*.35,radius*(1.28 + .12*ripple),length(delta));
+        float blob = 1. - smoothstep(radius*.48,radius*(1.10 + .09*ripple),length(delta));
         float meander = sin(delta.y*56.+mark.x*45.)*.006;
         float drip = 1.-smoothstep(radius*.06+.002,radius*.12+.004,length(vec2(delta.x+meander,delta.z*.66)));
         drip *= smoothstep(-radius*4.,-radius*.55,delta.y) * (1.-step(0.,delta.y));
@@ -398,7 +398,38 @@ export const fabricFragment = /* glsl */`
         }
       }
       rgb += knit * mix(1.,.22,wetness);
-      rgb += shine * (.035 + .12*wetness + .13*float(fabric==2.) + .34*step(6.,fabric));
+      // Soft silk / oil sheen is continuous; pearl requires a *different*
+      // microflake layer, not simply a more intense plastic-looking hotspot.
+      float glossStyle = float(fabric == 2.);
+      float pearlStyle = float(fabric == 3.);
+      float clearcoat = .035 + .09*wetness + .11*glossStyle
+                        + .07*pearlStyle + .34*step(6.,fabric);
+      rgb += shine * clearcoat;
+      if (fabric == 3.) {
+        // Stable micro-glints attached to the leg REST coordinates.
+        // No screenspace noise, so orbiting the camera does not make the
+        // pearls swim across the stocking; low-density cells keep iOS GPU
+        // ALU work bounded. A second broad lobe mimics pearlescent fibres.
+        vec2 fleckUV = vec2(angle*172.,h*290.);
+        vec2 cell = floor(fleckUV);
+        vec2 f = fract(fleckUV)-.5;
+        float pearlSeed = hash(cell+vec2(11.,3.));
+        float sparkle = smoothstep(.976,.995,pearlSeed)
+                      * (1.-smoothstep(.06,.34,length(f)));
+        float softLobe = pow(1.-incidence,3.)*.045;
+        vec3 pearlLight = mix(vec3(.96,.84,.89),vec3(.98,.96,1.),modeled);
+        rgb += pearlLight*(sparkle*(.23+.22*wetness) + softLobe);
+      }
+      if (wetness > .06 && fabric < 4.) {
+        // Sparse point highlights confined to already wet fragments.
+        // This does not modify body depth, wet coverage or denier opacity.
+        vec2 beadUV=vec2(angle*122.,h*205.);
+        vec2 beadCell=floor(beadUV);
+        float beadHash=hash(beadCell+vec2(7.,19.));
+        float beadShape=1.-smoothstep(.035,.20,length(fract(beadUV)-.5));
+        float bead=smoothstep(.981,.999,beadHash)*beadShape;
+        rgb += vec3(.90,.84,.88)*bead*wetness*.17;
+      }
       float fresnel = pow(1.-incidence,2.7);
       rgb = mix(rgb, mix(skin, vec3(.92,.86,.84), .45), fresnel*.16);
       if (edge > 0.) {
