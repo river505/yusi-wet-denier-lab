@@ -35,7 +35,7 @@ const defaultLeg = { length: 'thigh', cuff: 'lace', material: 'sheer', denier: 4
 const restTarget = new THREE.Vector3(0, .43, .035);
 const maxStains = 24;
 const poses = ['single', 'together', 'step', 'crossed', 'tiptoe', 'point', 'pigeon',
-  'bendForward', 'bendTiptoe', 'tiptoeShake', 'bendTiptoeShake', 'pigeonTiptoeShake', 'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick',
+  'bendForward', 'bendTiptoe', 'tiptoeShake', 'bendTiptoeShake', 'pigeonTiptoeShake', 'stepPoint', 'stepPointShake', 'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick',
   'lieFlat', 'lieBent', 'lieCrossLeft', 'lieCrossRight', 'lieSideLeft', 'lieSideRight', 'lieSpread'];
 
 function createSound() {
@@ -491,9 +491,11 @@ function createEngine({ stocking }) {
   let playClock = 0;
   let motionClock = 0, lastMotionUpdate = -Infinity;
   let motionPlaying = true, motionSpeed = 1, motionAmplitude = 1;
+  let footMotion={lateral:1,forward:1,heel:1};
+  let legMorph={length:1,height:1,calf:1,thigh:1};
   const footPitch = [0,0]; // Per-leg ankle pitch in degrees, applies to every pose.
   let legSpacing = 1; // Distance between bilateral hip origins, relative to pose default.
-  const motionHz = {kick:.85,walk:1.18,run:1.85,sitBounce:2.5,sitCrossKick:1.05,tiptoeShake:3.0,bendTiptoeShake:3.6,pigeonTiptoeShake:3.25};
+  const motionHz = {kick:.85,walk:1.18,run:1.85,sitBounce:2.5,sitCrossKick:1.05,tiptoeShake:3.0,bendTiptoeShake:3.6,pigeonTiptoeShake:3.25,stepPointShake:3.1};
   let width = 1;
   let height = 1;
   let projectionLeft = 0;
@@ -562,11 +564,15 @@ function createEngine({ stocking }) {
   function placePose(phase=0) {
     const seated=isSeatedPose(pose),lying=isLyingPose(pose),moving=isMotionPose(pose);
     models.forEach(({ group, skinMesh, cloth, reflection, contact }, index) => {
-      applyPose(skinMesh.geometry,stocking,pose,index,phase,motionAmplitude,footPitch);
-      const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase,motionAmplitude,footPitch);
+      applyPose(skinMesh.geometry,stocking,pose,index,phase,motionAmplitude,
+        footPitch,footMotion,legMorph);
+      const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase,
+        motionAmplitude,footPitch,footMotion,legMorph);
+      const scale=legMorph.height;
+      group.scale.set((index===0?1:-1)*scale,scale,scale);
       // Preserve anatomical hip pivots: adjust only bilateral placement,
       // not leg geometry or the knee/ankle transforms.
-      group.position.set(x*legSpacing,y,z);
+      group.position.set(x*legSpacing*scale,y*scale,z*scale);
       group.visible=visible;
       group.updateMatrixWorld(true);
       // Contact follows the posed foot, and is suppressed while airborne.
@@ -575,11 +581,21 @@ function createEngine({ stocking }) {
       group.localToWorld(contactProbe);
       contact.position.set(contactProbe.x,.0032,contactProbe.z);
       contact.visible=visible&&!belowGround&&!lying&&contactProbe.y<.085;
-      reflection.position.set(x,-y,z);
+      reflection.position.set(x*legSpacing*scale,-y*scale,z*scale);
+      reflection.scale.set((index===0?1:-1)*scale,-scale,scale);
       reflection.visible=visible&&!belowGround&&!seated&&!lying&&!moving&&
         reflection.material.uniforms.reflection.value>0;
     });
     floorShade.visible=!seated&&!lying&&!moving&&!belowGround;
+  }
+  function refreshStandingShadow(){
+    if(isMotionPose(pose)||isSeatedPose(pose)||isLyingPose(pose))return;
+    const old=shadowCache.get(pose);
+    const fresh=bakeFloorShadow(models);
+    shadowCache.set(pose,fresh);
+    floorShade.material.map=fresh;
+    floorShade.material.needsUpdate=true;
+    if(old&&old!==fresh)old.dispose();
   }
   function setPose(name) {
     const next=poses.includes(name)?name:'step';
@@ -1029,14 +1045,7 @@ function createEngine({ stocking }) {
       if(Math.abs(next-legSpacing)<.001)return;
       legSpacing=next;
       placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
-      if(!isMotionPose(pose)&&!isLyingPose(pose)&&!isSeatedPose(pose)){
-        const old=shadowCache.get(pose);
-        const fresh=bakeFloorShadow(models);
-        shadowCache.set(pose,fresh);
-        floorShade.material.map=fresh;
-        floorShade.material.needsUpdate=true;
-        if(old&&old!==fresh)old.dispose();
-      }
+      refreshStandingShadow();
     },
     setFootPitch(values) {
       const next = [0,1].map(i=>THREE.MathUtils.clamp(Number(values?.[i]) || 0,-35,35));
@@ -1046,14 +1055,7 @@ function createEngine({ stocking }) {
       // ankle must invalidate BOTH deformed position and normal buffers.
       clearMotionCache();
       placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
-      if(!isMotionPose(pose)&&!isLyingPose(pose)&&!isSeatedPose(pose)){
-        const old = shadowCache.get(pose);
-        const fresh = bakeFloorShadow(models);
-        shadowCache.set(pose,fresh);
-        floorShade.material.map=fresh;
-        floorShade.material.needsUpdate=true;
-        if(old && old!==fresh)old.dispose();
-      }
+      refreshStandingShadow();
     },
     setMotionAmplitude(value) {
       const next=THREE.MathUtils.clamp(Number(value)||1,.2,2);
@@ -1063,14 +1065,27 @@ function createEngine({ stocking }) {
       if(isMotionPose(pose)||isAdjustableStandingPose(pose)){
         placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
       }
-      if(isAdjustableStandingPose(pose)){
-        const old=shadowCache.get(pose);
-        const fresh=bakeFloorShadow(models);
-        shadowCache.set(pose,fresh);
-        floorShade.material.map=fresh;
-        floorShade.material.needsUpdate=true;
-        if(old&&old!==fresh)old.dispose();
-      }
+      if(isAdjustableStandingPose(pose))refreshStandingShadow();
+    },
+    setFootMotion(value){
+      const next=Object.fromEntries(['lateral','forward','heel'].map(key=>[
+        key,THREE.MathUtils.clamp(Number(value?.[key]??1),0,2),
+      ]));
+      if(Object.keys(next).every(key=>Math.abs(next[key]-footMotion[key])<.0001))return;
+      footMotion=next;
+      clearMotionCache();
+      if(isMotionPose(pose))placePose(motionClock*(motionHz[pose]||1));
+    },
+    setLegMorph(value){
+      const limits={length:[.82,1.22],height:[.80,1.30],thigh:[.75,1.35],calf:[.75,1.35]};
+      const next=Object.fromEntries(Object.entries(limits).map(([key,[lo,hi]])=>[
+        key,THREE.MathUtils.clamp(Number(value?.[key]??1),lo,hi),
+      ]));
+      if(Object.keys(next).every(key=>Math.abs(next[key]-legMorph[key])<.0001))return;
+      legMorph=next;
+      clearMotionCache();
+      placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
+      refreshStandingShadow();
     },
     setMotionPlaying(value) { motionPlaying=Boolean(value); },
     setMotionSpeed(value) { motionSpeed=THREE.MathUtils.clamp(Number(value)||1,.5,2); },
