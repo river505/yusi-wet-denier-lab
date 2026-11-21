@@ -450,7 +450,8 @@ function createEngine({ stocking }) {
     });
     center.multiplyScalar(1 / selected.length);
     view.target.copy(center);
-    view.range = selected.length === 1 ? .58 : .76;
+    // Keep both feet within narrow portrait-screen horizontal FOV.
+    view.range = selected.length === 1 ? .58 : .92;
     view.yaw = .17;
     view.pitch = .23;
     lastInput = performance.now();
