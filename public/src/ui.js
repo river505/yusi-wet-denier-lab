@@ -39,7 +39,8 @@ const PATTERNS = {
 
 const SECRETS = {none: '无', hearts: '藏爱心', stars: '藏星星', paws: '藏猫爪', words: '藏雨丝'};
 const WET_COLORS = {'': '不变', sakura: '变樱粉', mist: '变雾蓝', taro: '变香芋紫', cherry: '变正红'};
-const DENIERS = {15: '15D', 40: '40D', 70: '70D', 120: '120D'};
+const DENIERS = {15: '15D', 40: '40D', 70: '70D', 120: '120D', 200: '200D'};
+const clampDenier = value => Math.max(5,Math.min(200,Math.round(Number(value)||40)));
 const BACKDROPS = {
   lilac: ['浅紫', '#e4dce8'], sakura: ['樱粉', '#f3d6dd'], mint: ['薄荷', '#cfe7df'],
   cream: ['奶油', '#f0e3c8'], sky: ['天蓝', '#cbdff3'], dusk: ['夜蓝', '#2a2944'],
@@ -170,7 +171,7 @@ function deserializeLook(hash) {
       cuff: Object.hasOwn(CUFFS, cuff) ? cuff : 'lace',
       garter: garter === '1',
       material: Object.hasOwn(MATERIALS, material) ? material : 'sheer',
-      denier: Object.hasOwn(DENIERS, denier) ? Number(denier) : 40,
+      denier: /^\d{1,3}$/.test(denier) ? clampDenier(denier) : 40,
       pattern: Object.hasOwn(PATTERNS, pattern) ? pattern : 'none',
       color: decodeColor(color, COLORS) || 'ink',
       secret: Object.hasOwn(SECRETS, secret) ? secret : 'none',
@@ -211,8 +212,15 @@ export function initUI(engine) {
   scenes.replaceChildren(sceneChoices, backdropRow, sceneNote);
 
   const materialNote = note('');
+  const legSummary = element('div', {class:'leg-summary',id:'legSummary'}, [
+    button('左腿 · 40D', {id:'legSummary0','data-leg-target':'0'}),
+    button('右腿 · 40D', {id:'legSummary1','data-leg-target':'1'}),
+  ]);
+  const denierRange = element('input', {id:'denierRange',type:'range',min:'5',max:'200',step:'1',value:'40','aria-label':'丝袜丹尼尔数'});
+  const denierNumber = element('input', {id:'denierNumber',type:'number',min:'5',max:'200',step:'1',value:'40',inputmode:'numeric','aria-label':'输入丹尼尔数'});
+  const denierHint = note('当前调整双腿；Denier 越高，纱线遮盖越强，袜尖区域会更厚实。');
   const targets = element('div', {
-    class: 'seg', 'data-key': 'target', role: 'radiogroup', 'aria-label': '穿在哪条腿上',
+    class: 'seg', 'data-key': 'target', role: 'radiogroup', 'aria-label': '选择要编辑的腿',
   }, [['-1', '双腿'], ['0', '左腿'], ['1', '右腿']].map(
     ([value, label]) => button(label, {'data-v': value, role: 'radio'}),
   ));
@@ -244,10 +252,20 @@ export function initUI(engine) {
       note('默认肤色与原始仓库一致；截断内侧固定渐变至白色，不受肤色调节影响。'),
     ],
     material: [
+      row('编辑侧', legSummary),
       row('材质', choices('material', Object.fromEntries(
         Object.entries(MATERIALS).map(([key, [label]]) => [key, label]),
       ))),
-      row('厚度', choices('denier', DENIERS)),
+      row('常用D', choices('denier', DENIERS)),
+      row('自定义D', element('div', {class:'denier-adjust'}, [
+        denierRange, denierNumber, element('span', {class:'unit'}, ['D']),
+      ])),
+      denierHint,
+      row('左右配置', element('div', {class:'leg-tools'}, [
+        button('左 → 右',{id:'copyLegLeftToRight'}),
+        button('右 → 左',{id:'copyLegRightToLeft'}),
+        button('交换',{id:'swapLegs'}),
+      ])),
       materialNote,
     ],
     pattern: [choices('pattern', PATTERNS)],
@@ -305,6 +323,19 @@ export function initUI(engine) {
     for (const [key, value] of Object.entries(leg)) {
       syncChoices(materials, key, key === 'garter' ? Number(value) : value);
     }
+    // The controls always reflect the selected leg; shared editing still
+    // applies to both, preserving independent left/right material records.
+    const activeDenier = clampDenier(leg.denier);
+    denierRange.value = String(activeDenier);
+    denierNumber.value = String(activeDenier);
+    const toneName = state.target === '-1' ? '双腿' : state.target === '0' ? '左腿' : '右腿';
+    denierHint.textContent = '当前调整' + toneName + ' · 5–200D；低D显肤色，高D织物遮盖更强。';
+    state.legs.forEach((side,index) => {
+      const b = get('#legSummary'+index);
+      b.textContent = (index===0?'左腿':'右腿')+' · '+clampDenier(side.denier)+'D';
+      b.classList.toggle('on',state.target===String(index));
+      b.setAttribute('aria-pressed',String(state.target===String(index)));
+    });
     syncChoices(materials, 'skinTone', state.skinTone);
     const lightnessOutput = get('#skinBrightnessValue');
     if (lightnessOutput) lightnessOutput.textContent = state.skinBrightness + '%';
@@ -313,6 +344,7 @@ export function initUI(engine) {
     foot.classList.toggle('no-target', state.pose === 'single' || state.tab === 'pose');
     const inactive = ['velvet', 'cotton', 'latex'].includes(leg.material);
     materials.querySelector('[data-key="denier"]').classList.toggle('idle', inactive);
+    get('.denier-adjust').classList.toggle('idle', inactive);
     const [label, explanation] = MATERIALS[leg.material];
     materialNote.textContent = label + '：' + explanation + (inactive ? '。这种料子不透，厚度不起作用。' : '。');
     materials.querySelector('[data-key="cuff"]').classList.toggle('idle', leg.length === 'tights');
@@ -491,6 +523,7 @@ export function initUI(engine) {
   }
 
   function editMaterial(key, value) {
+    if (key === 'denier') value = clampDenier(value);
     const target = state.pose === 'single' ? '-1' : state.target;
     const legs = state.legs.map((leg, index) => {
       if (target !== '-1' && Number(target) !== index) return leg;
@@ -575,6 +608,12 @@ export function initUI(engine) {
     drawThumbnails();
   });
   materials.addEventListener('click', event => {
+    const sideButton = event.target.closest('button[data-leg-target]');
+    if (sideButton) {
+      state.target = sideButton.dataset.legTarget;
+      syncWardrobe();
+      return;
+    }
     const item = event.target.closest('button[data-v]');
     if (!item) return;
     const {key} = item.closest('[data-key]').dataset;
@@ -595,6 +634,20 @@ export function initUI(engine) {
       const next = key === 'denier' ? Number(value) : key === 'garter' ? value === '1' : value;
       editMaterial(key, next || (key === 'wetColor' ? null : next));
     }
+  });
+  denierRange.addEventListener('input', () => editMaterial('denier',denierRange.value));
+  denierNumber.addEventListener('change', () => editMaterial('denier',denierNumber.value));
+  get('#copyLegLeftToRight').addEventListener('click', () => {
+    state.target='1';
+    applyMaterial([state.legs[0], {...state.legs[0]}]);
+  });
+  get('#copyLegRightToLeft').addEventListener('click', () => {
+    state.target='0';
+    applyMaterial([{...state.legs[1]}, state.legs[1]]);
+  });
+  get('#swapLegs').addEventListener('click', () => {
+    state.target='-1';
+    applyMaterial([{...state.legs[1]}, {...state.legs[0]}]);
   });
   materials.querySelector('[data-key="color"] input[type="color"]').addEventListener('input', event => {
     editMaterial('color', event.target.value);
