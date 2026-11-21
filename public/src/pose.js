@@ -211,24 +211,6 @@ function rotateAround(point, [x, y, z], rotation, weight = 1) {
   point[2] += (c + z - point[2]) * weight;
 }
 
-// Angle-weighted joints are evaluated in place. Unlike interpolating two
-// rotated positions, they preserve the rigid heel volume. Avoid allocating
-// closures per vertex: normal recovery samples each point four times.
-function rotateXWeighted(p,pivot,angle,weight){
-  if(weight<=0||Math.abs(angle)<1e-7)return;
-  const t=angle*weight,c=Math.cos(t),s=Math.sin(t);
-  const y=p[1]-pivot[1],z=p[2]-pivot[2];
-  p[1]=pivot[1]+c*y-s*z;
-  p[2]=pivot[2]+s*y+c*z;
-}
-function rotateZWeighted(p,pivot,angle,weight){
-  if(weight<=0||Math.abs(angle)<1e-7)return;
-  const t=angle*weight,c=Math.cos(t),s=Math.sin(t);
-  const x=p[0]-pivot[0],y=p[1]-pivot[1];
-  p[0]=pivot[0]+c*x-s*y;
-  p[1]=pivot[1]+s*x+c*y;
-}
-
 function makeTransform(config) {
   const pitch = xRotation((config.pitch ?? 0) * radians);
   const roll = zRotation((config.roll ?? 0) * radians);
@@ -251,14 +233,10 @@ function makeTransform(config) {
     ? 0
     : Math.atan2(-swing(1, 0, 0)[1], swing(...flexKnee(0, 1, 0))[1]);
   const heel = config.heel ?? 0;
-  const ankleAngle=solePitch+(heel+(config.ankle??0))*radians;
-  const toeAngle=((config.toe??0)-heel)*radians;
-  // Weighted point blending of two rotated mesh locations is not a true
-  // rotation: the interpolation scales the foot near the ankle and pinches
-  // its heel when the heel angle reaches 35–55 degrees. Instead vary the
-  // ANGLE, then rotate each vertex about the anatomically fixed pivot.
-  // In-place elementary rotations above preserve the exact result of
-  // these composed x/z rotations without creating per-vertex closures.
+  const plantar = xRotation(solePitch + (heel + (config.ankle ?? 0)) * radians);
+  const invert = zRotation(soleRoll);
+  const flexAnkle = (x, y, z) => invert(...plantar(x, y, z));
+  const flexToe = xRotation(((config.toe ?? 0) - heel) * radians);
 
   // On high-heel/pointed poses the original 35mm toe and 65mm ankle
   // blending intervals folded the forefoot into a visible crease.
@@ -266,31 +244,19 @@ function makeTransform(config) {
   // Normal walking/standing and the neutral GLB remain pixel-identical.
   const strongFootFlex=Math.abs(heel)+Math.abs(config.toe??0)+
     Math.abs(config.ankle??0)>20;
-  const toeStart=strongFootFlex?.110:.12;
-  const toeEnd=strongFootFlex?.190:.160;
-  // Keep the heel and talus below y=.10 rigid, distributing the ankle
-  // articulation into the lower shin instead of folding the calcaneus.
-  const ankleStart=strongFootFlex?.105:.088;
-  // Use a progressively broader ankle transition for high plantar flexion.
-  // On the actual 4,086-vertex leg mesh a fixed .177 endpoint can invert
-  // heel-adjacent triangles above ~70 degrees; the angle-aware band keeps
-  // its Jacobian positive even with the extra +/-35 degree pitch control.
-  const ankleEnd=strongFootFlex?Math.min(.31,
-    Math.max(.20,.19+.00078*Math.abs(ankleAngle)/radians)):.155;
+  const toeStart=strongFootFlex?.107:.12;
+  const toeEnd=strongFootFlex?.190:.155;
+  const ankleStart=strongFootFlex?.083:.06;
+  const ankleEnd=strongFootFlex?.163:.125;
   return (x, y, z) => {
     const point=[x,y,z];
     if(z>toeStart&&y<.095){
-      const toeWeight=smoothstep(toeStart,toeEnd,z)*
+      const heelWeight=smoothstep(toeStart,toeEnd,z)*
         (1.-smoothstep(.048,strongFootFlex?.09:.07,y));
-      if(toeWeight>0.)rotateXWeighted(point,toe,toeAngle,toeWeight);
+      rotateAround(point,toe,flexToe,heelWeight);
     }
-    if(y<ankleEnd){
-      const ankleWeight=1.-smoothstep(ankleStart,ankleEnd,y);
-      if(ankleWeight>0.){
-        rotateXWeighted(point,ankle,ankleAngle,ankleWeight);
-        rotateZWeighted(point,ankle,soleRoll,ankleWeight);
-      }
-    }
+    if(y<ankleEnd)rotateAround(point,ankle,flexAnkle,
+      1.-smoothstep(ankleStart,ankleEnd,y));
     if(y<.565)rotateAround(point,knee,flexKnee,1.-smoothstep(.415,.565,y));
     rotateAround(point,hip,swing);
     return point;
