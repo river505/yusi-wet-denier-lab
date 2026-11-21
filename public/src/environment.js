@@ -23,7 +23,9 @@ export function createSpatialEnvironment(T, world) {
     const canvas=document.createElement('canvas');canvas.width=canvas.height=512;
     const ctx=canvas.getContext('2d');
     const light=kind==='bath',wet=kind==='street',stone=kind==='pool';
-    ctx.fillStyle=light?'#d5dce5':wet?'#343846':stone?'#d4cec0':'#e7e0ec';
+    // Palette sampled from the reference's illustrated scenes, but textures
+    // are mapped to real 3D surfaces so they rotate correctly with the camera.
+    ctx.fillStyle=light?'#e4eced':wet?'#403b50':stone?'#ede9dc':'#f0ebf1';
     ctx.fillRect(0,0,512,512);
     const seed=i=>(Math.sin(i*114.51+47.37)*43758.5453)%1;
     const divisions=wet?4:stone?8:light?8:16, cell=512/divisions;
@@ -33,13 +35,13 @@ export function createSpatialEnvironment(T, world) {
       ctx.fillStyle=wet?'rgba(110,129,151,'+(.045+Math.abs(n)*.075)+')':
         'rgba(255,255,255,'+(.025+Math.abs(n)*.095)+')';
       ctx.fillRect(x*cell+1,y*cell+1,cell-2,cell-2);
-      if(!wet){ctx.strokeStyle=light?'rgba(124,155,183,.34)':'rgba(114,112,114,.24)';
+      if(!wet){ctx.strokeStyle=light?'rgba(117,160,174,.16)':'rgba(139,127,147,.11)';
         ctx.lineWidth=light?1.65:1.2;ctx.strokeRect(x*cell+.65,y*cell+.65,cell-1.3,cell-1.3);}
     }
     for(let i=0;i<2700;i++){let x=Math.abs(seed(i*17))*512,y=Math.abs(seed(i*9+4))*512;
       ctx.fillStyle=i%2?'rgba(255,255,255,.06)':'rgba(45,39,50,.035)';ctx.fillRect(x,y,1.2,1.2)}
     const t=new T.CanvasTexture(canvas);t.wrapS=t.wrapT=T.RepeatWrapping;
-    t.repeat.set(wet?3:stone?3:light?5:2,wet?3:stone?3:light?5:2);
+    t.repeat.set(wet?3:stone?3:light?4:2,wet?3:stone?3:light?4:2);
     t.colorSpace=T.SRGBColorSpace;t.anisotropy=4;
     return t;
   }
@@ -79,7 +81,13 @@ export function createSpatialEnvironment(T, world) {
     return mesh;
   }
   function standard(hex,rough=.72,metal=0){return new T.MeshStandardMaterial({color:hex,roughness:rough,metalness:metal,side:T.DoubleSide})}
-  function floorMat(kind){return new T.MeshStandardMaterial({map:tileTexture(kind),roughness:kind==='street'?.25:kind==='bath'?.42:.83,metalness:kind==='street'?.25:0,side:T.DoubleSide})}
+  function floorMat(kind){
+    // A seamless pastel cyclorama for studio mode; floor grids were far too
+    // prominent compared with the original reference. Other scenes retain
+    // actual tiled/world-space ground so perspective remains correct.
+    if(kind==='studio')return new T.MeshStandardMaterial({color:'#eee9f0',roughness:.94,metalness:0,side:T.DoubleSide});
+    return new T.MeshStandardMaterial({map:tileTexture(kind),roughness:kind==='street'?.36:kind==='bath'?.75:.85,metalness:kind==='street'?.07:0,side:T.DoubleSide});
+  }
   plane(groups.studio,20,20,floorMat('studio'));
   const studioDisc=new T.Mesh(new T.CircleGeometry(1.45,100),new T.MeshBasicMaterial({color:'#e0d7e5',transparent:true,opacity:.25,depthWrite:false}));
   studioDisc.rotation.x=-Math.PI/2;studioDisc.position.set(0,-.01,0);groups.studio.add(studioDisc);
@@ -87,12 +95,20 @@ export function createSpatialEnvironment(T, world) {
   const bath=groups.bath;
   plane(bath,15,15,floorMat('bath'));
   const wallTexture=tileTexture('bath');wallTexture.repeat.set(7,3);
-  const wallMaterial=new T.MeshStandardMaterial({map:wallTexture,color:'#a5d5d5',roughness:.48,side:T.DoubleSide});
+  const wallMaterial=new T.MeshStandardMaterial({map:wallTexture,color:'#c2e2e4',roughness:.88,side:T.DoubleSide});
   const back=new T.Mesh(new T.PlaneGeometry(11,5),wallMaterial);
   back.position.set(0,2,-3.9);bath.add(back);
   const side=new T.Mesh(new T.PlaneGeometry(11,5),wallMaterial);
   side.rotation.y=Math.PI/2;side.position.set(-4.7,2,0);bath.add(side);
-  const bathWhite=standard('#ecf2ef',.22),rimWhite=standard('#fbfbf7',.2);
+  // Upper cream wall and pastel cyan horizontal trim are attached to the
+  // same room geometry, unlike the reference's camera-fixed painted backdrop.
+  const wallIvory=standard('#f2f0ef',.93);
+  const wallBand=standard('#a6d5d9',.94);
+  box(bath,11,1.33,.021,wallIvory,0,3.84,-3.877);
+  box(bath,.021,1.33,11,wallIvory,-4.676,3.84,0);
+  box(bath,11,.25,.023,wallBand,0,3.035,-3.875);
+  box(bath,.023,.25,11,wallBand,-4.675,3.035,0);
+  const bathWhite=standard('#eef1f0',.38),rimWhite=standard('#fafaf8',.33);
   // The tub is deliberately behind the stance; floor and tub share world axes.
   roundedBox(bath,2.28,.78,.85,.075,bathWhite,.54,.39,-1.65);
   roundedBox(bath,2.32,.075,.92,.022,rimWhite,.54,.81,-1.65);
@@ -119,21 +135,21 @@ export function createSpatialEnvironment(T, world) {
       float w=sin(x*11.+z*15.+uTime*.7)+sin(x*18.-z*9.-uTime*.45);
       float a=pow(.5+.5*sin(x*31.+z*16.+2.*sin(z*7.+uTime*.6)),14.);
       float b=pow(.5+.5*sin(x*15.-z*27.+1.7*sin(x*12.-uTime*.5)),12.);
-      vec3 c=mix(vec3(.12,.45,.54),vec3(.37,.76,.87),.5+.25*w);
-      c+=vec3(.48,.59,.53)*(.18*a+.25*b);gl_FragColor=vec4(c,1.);
+      vec3 c=mix(vec3(.48,.75,.85),vec3(.66,.88,.93),.5+.21*w);
+      c+=vec3(.55,.65,.65)*(.11*a+.16*b);gl_FragColor=vec4(c,1.);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`});
   plane(pool,16,19,poolWaterMat,0,-.035,-11.02);
   box(pool,16,.1,.16,standard('#f5f2e8',.31),0,0,-1.51);
   // Pool distant trees are fixed three-dimensional forms, not screen artwork.
-  const hillMat=standard('#759f79',1);
+  const hillMat=standard('#91b28c',1);
   for(let i=0;i<7;i++){const h=new T.Mesh(new T.SphereGeometry(1,20,10),hillMat);
-    h.scale.set(1.6+i%3*.3,.65+i%2*.2,.33);h.position.set((i-3)*2.1,.49,-6.4);
+    h.scale.set(1.65+i%3*.33,.55+i%2*.16,.36);h.position.set((i-3)*2.1,.45,-6.4);
     pool.add(h)}
   const street=groups.street;
   plane(street,20,20,floorMat('street'));
-  const white=standard('#c2c1be',.47,.08),streetSide=standard('#55516c',.67);
+  const white=standard('#c9c7d1',.59,.02),streetSide=standard('#57516b',.96);
   for(let i=0;i<5;i++){
     box(street,.72,.008,.26,white,(i-2)*1.04,.003,-1.6);
   }
@@ -143,7 +159,7 @@ export function createSpatialEnvironment(T, world) {
   // Bounded neon columns produce view-dependent highlights without a fake screen-space road.
   const neonColors=['#ed83be','#69d9ed','#e6a1ed'];
   for(let i=0;i<3;i++){
-    const mat=new T.MeshBasicMaterial({color:neonColors[i],transparent:true,opacity:.83});
+    const mat=new T.MeshBasicMaterial({color:neonColors[i],transparent:true,opacity:.67});
     box(street,.12,1.35,.025,mat,(i-1)*2.2,1.1,-4.75);
     const glow=new T.PointLight(neonColors[i],1.5,6,2);
     glow.position.set((i-1)*2.2,1.25,-4.25);street.add(glow);
@@ -169,6 +185,11 @@ export function createSpatialEnvironment(T, world) {
       street:['#363649',.13],
     };
     const [fogColor,fogDensity]=fogSettings[active];
+    // Preserve the lighter illustrated studio/bath palette; only the neon
+    // street switches to subdued ambient lighting.
+    ambience.intensity=active==='street'?1.10:2.2;
+    keyLight.intensity=active==='street'?1.10:2.25;
+    fillLight.intensity=active==='street'?.60:.90;
     if(!world.fog)world.fog=new T.FogExp2(fogColor,fogDensity);
     world.fog.color.set(fogColor);
     world.fog.density=fogDensity;
