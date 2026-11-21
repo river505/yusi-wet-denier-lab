@@ -40,8 +40,11 @@ function motionConfigs(name, phase) {
   if(name==='kick') {
     const pulse=.5-.5*Math.cos(theta);
     return [
-      {x:.095, pitch:-13-56*pulse, knee:15+24*(1-pulse), yaw:6, roll:-2,
-        lift:.02+.08*pulse, z:.03*pulse},
+      // Kick rotates around the hip joint, with knee flexion relative to
+      // the knee joint. Do not translate the kicking leg to keep its toes
+      // on the floor: that old sole-height correction pulled the entire
+      // limb downward at maximum extension.
+      {x:.095, pitch:-13-56*pulse, knee:15+24*(1-pulse), yaw:6, roll:-2},
       {x:.095,pitch:0,knee:3,yaw:7,roll:-1},
     ];
   }
@@ -170,11 +173,14 @@ function resolvePose(restGeometry, name, frameIndex=0) {
     first = makeTransform({ ...configs[0], knee: (low + high) / 2 });
   }
 
+  // Shared pelvis anchor for unilateral kicking. The supporting leg keeps
+  // its sole planted; the swing leg rotates about the anatomical hip,
+  // not its own lowest moving foot vertex.
+  const supportHeight = footLevel - soleHeight(vertices, second);
   const result = [first, second].map((transform, leg) => ({
     transform, x: configs[leg].x * (leg === 0 ? 1 : -1),
-    // A seated pelvis stays on the chair. Walk/run use a small swing-foot
-    // lift over the support height, instead of gluing both feet to the floor.
     y: Number.isFinite(configs[leg].shiftY) ? configs[leg].shiftY :
+       name === 'kick' ? supportHeight :
        footLevel - soleHeight(vertices, transform) + (configs[leg].lift || 0),
     z: configs[leg].z ?? 0,
     visible: name !== 'single' || leg === 0,
