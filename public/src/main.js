@@ -713,6 +713,7 @@ function createEngine({ stocking }) {
       view.target.copy(restTarget).multiplyScalar(extent);
     }
     lastInput = performance.now();
+    if(panelCamera.active)fitPanelCamera();
   }
   function focusToes(targetLeg = '-1') {
     // Use the actual posed foot transforms. A fixed camera target would
@@ -749,7 +750,8 @@ function createEngine({ stocking }) {
   }
 
   function zoom(step) {
-    view.range = THREE.MathUtils.clamp(view.range * Math.exp(-step * .19), .23, 3.2);
+    view.range=THREE.MathUtils.clamp(view.range*Math.exp(-step*.19),
+      .23,panelCamera.active?40:3.2);
     lastInput = performance.now();
   }
 
@@ -771,11 +773,13 @@ function createEngine({ stocking }) {
     backdropMaterial.uniforms.aspect.value = camera.aspect;
     camera.fov = width / height < .75 ? 34 : 30;
     camera.updateProjectionMatrix();
+    if(panelCamera.active)setPanelFraming(true,true);
   }
 
   function updateCamera(delta) {
     const follow = 1 - Math.exp(-delta * 9);
-    if (!reducedMotion.matches && !pointers.size && mode !== 'view' && performance.now() - lastInput > 9000) {
+    if(!reducedMotion.matches&&!panelCamera.active&&!pointers.size
+      &&mode!=='view'&&performance.now()-lastInput>9000){
       view.yaw += delta * .105;
     }
     liveView.yaw += (view.yaw - liveView.yaw) * follow;
@@ -806,20 +810,22 @@ function createEngine({ stocking }) {
     const horizontalOffset = width * .5 - desiredX;
     projectionLeft += (horizontalOffset - projectionLeft) * follow;
 
-    const sheetOpen = !isWide && document.body.classList.contains('sheet-open');
-    let verticalOffset = 0;
-    if (!isWide) {
-      // The fixed bottom dock occludes the model; frame inside the visible canvas.
-      const dockTop = document.querySelector('.dock')?.getBoundingClientRect().top ?? rect.bottom;
-      let visibleBottom = Math.min(rect.bottom, dockTop);
-      if (sheetOpen) {
-        const visibleSheet = document.body.classList.contains('mat-open')
-          ? document.getElementById('materials')
-          : document.getElementById('scenes');
-        visibleBottom = Math.min(visibleBottom, visibleSheet?.getBoundingClientRect().top ?? rect.bottom);
+    const sheetOpen=!isWide&&document.body.classList.contains('sheet-open');
+    let verticalOffset=0;
+    if(!isWide){
+      if(sheetOpen){
+        const r=panelRegion();
+        // Pan into the unobstructed strip ABOVE the sheet, rather than
+        // limiting vertical movement to 16vh as the old camera did.
+        verticalOffset=THREE.MathUtils.clamp(
+          height*.5-(r.top+r.bottom)*.5,0,height*.44);
+      }else{
+        const dockTop=document.querySelector('.dock')?.getBoundingClientRect().top??rect.bottom;
+        const visibleHeight=Math.max(height*.32,
+          Math.min(rect.bottom,dockTop)-rect.top);
+        verticalOffset=THREE.MathUtils.clamp(
+          height*.5-visibleHeight*.5,0,height*.16);
       }
-      const visibleHeight = Math.max(height * .32, visibleBottom - rect.top);
-      verticalOffset = THREE.MathUtils.clamp(height * .5 - visibleHeight * .5, 0, height * .16);
     }
     verticalProjectionOffset += (verticalOffset - verticalProjectionOffset) * follow;
     if (Math.abs(projectionLeft) > .05 || Math.abs(verticalProjectionOffset) > .05) {
@@ -1124,7 +1130,8 @@ function createEngine({ stocking }) {
   setPose('step');
 
   return {
-    setScene, setSkinAppearance, setMaterial, setPose, zoom, orbit, resetCamera, focusToes, bucket, dry, photo, thumbnail,
+    setScene, setSkinAppearance, setMaterial, setPose, setPanelFraming,
+    zoom, orbit, resetCamera, focusToes, bucket, dry, photo, thumbnail,
     setLegSpacing(percent) {
       const next=THREE.MathUtils.clamp((Number(percent)||100)/100,.75,1.55);
       if(Math.abs(next-legSpacing)<.001)return;
