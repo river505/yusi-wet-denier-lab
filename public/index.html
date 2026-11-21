@@ -4,23 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#efe9f1">
-<title>雨丝 Wet Denier Lab</title>
+<title>ATELIER · Digital Fabric Studio</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5c3.6 4.9 6 8.3 6 11.5a6 6 0 0 1-12 0c0-3.2 2.4-6.6 6-11.5z' fill='%235d7bff'/%3E%3C/svg%3E">
-<meta name="description" content="点丝袜任意位置泼水：水花炸开，湿了的地方透出皮肤，水珠挂住、滑落、滴到地上。二次元 3D 丝袜泼水实验，制作 Newton Quan。">
-<meta name="author" content="Newton Quan">
+<meta name="description" content="ATELIER 三维服装材质实验室：连续人体网格、真实织物层、局部湿润着色与三维环绕场景。当前版本为腿部织物实验基线。">
+<meta name="author" content="ATELIER">
 <meta property="og:type" content="website">
-<meta property="og:title" content="雨丝 Wet Denier Lab">
-<meta property="og:description" content="点丝袜任意位置泼水：水花炸开，湿了的地方透出皮肤，水珠挂住、滑落、滴到地上。二次元 3D 丝袜泼水实验，制作 Newton Quan。">
-<meta property="og:image" content="./assets/og.png">
+<meta property="og:title" content="ATELIER · Digital Fabric Studio">
+<meta property="og:description" content="基于真实三角网格的交互式织物与湿润材质实验室。">
+<!-- Original project cover intentionally omitted: ATELIER artwork is under development. -->
 <meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="./vendor/zcool-xiaowei.css">
 <link rel="stylesheet" href="./src/site.css">
 </head>
 <body>
-<canvas id="view" aria-label="三维丝袜泼水"></canvas>
+<canvas id="view" aria-label="ATELIER 三维织物与材质实验场景"></canvas>
 <header class="brand">
-<div class="logo">雨丝</div>
-<div class="sub">WET&nbsp;DENIER&nbsp;LAB</div></header>
+<div class="logo">ATELIER</div>
+<div class="sub">DIGITAL&nbsp;FABRIC&nbsp;STUDIO</div></header>
 <div class="corner">
 <button id="photoBtn" class="round" aria-label="拍照"><svg viewBox="0 0 24 24"><path d="M4.5 8.2h3l1.4-2.2h6.2l1.4 2.2h3a1 1 0 0 1 1 1v8.6a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1V9.2a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="13.2" r="3.3" fill="none" stroke="currentColor" stroke-width="1.7"/></svg></button>
 <button id="aboutBtn" class="round" aria-label="制作说明" aria-expanded="false" aria-controls="about"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 11v5.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="12" cy="7.9" r="1.15" fill="currentColor"/></svg></button>
@@ -28,16 +28,16 @@
 <section id="about" class="about" role="dialog" aria-label="制作说明" aria-hidden="true">
 <button id="aboutClose" class="close" aria-label="关闭说明"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
 <div class="about-head">
-<div class="about-logo">雨丝</div>
-<div class="about-name">Wet Denier Lab · 丝袜泼水实验</div>
-<div class="maker">制作 <strong>Newton Quan</strong></div></div>
-<p class="lead">点丝袜泼水，看水花炸开、湿处透出皮肤、水珠挂住滑落。底栏切换泼水和视角；「场景」里换地方，「衣橱」里换姿势、款式、材质和花纹，每种料子遇水的样子都不一样。</p>
+<div class="about-logo">ATELIER</div>
+<div class="about-name">Digital Fabric Studio · 织物材质与场景实验</div>
+<div class="maker">开发 <strong>ATELIER</strong></div></div>
+<p class="lead">当前版本以腿部网格、织物光学和局部湿润着色为验证基线。支持切换视角、场景和织物参数；全身人体和真实服装网格将作为独立资产体系继续开发。本项目参考 Wet Denier Lab 的独立复刻实现。</p>
 <dl class="facts">
 <dt>技术</dt>
 <dd>Three.js 实时渲染，丝袜、水、场景和声音都由程序实时生成，没有用一张图片</dd>
 <dt>素材</dt>
 <dd>腿型 MakeHuman（CC0）· 丝袜原型 punkduck（<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>，已改编）· Three.js（MIT）</dd></dl>
-<div class="about-foot">© 2026 Newton Quan</div></section>
+<div class="about-foot">代码基于 <a href="https://github.com/river505/yusi-wet-denier-lab" target="_blank" rel="noopener">Wet Denier Lab 复刻项目</a>（MIT，原代码版权 MartinDelophy）；素材版权与授权见 <a href="https://github.com/river505/yusi-wet-denier-lab/blob/main/public/assets/ATTRIBUTION.md" target="_blank" rel="noopener">署名清单</a>。原站品牌归各自权利人。</div></section>
 <div id="hint" class="hint">点丝袜任意位置泼水 · 按住拖动连续浇</div>
 <div id="loading" class="loading"><span></span>正在准备丝袜与水…</div>
 <div id="zoombar" class="zoombar">
@@ -59,10 +59,10 @@
 <button id="matBtn" class="tool" aria-pressed="false" data-key="W"><svg viewBox="0 0 24 24"><path d="M12 8.4V7.2a2.1 2.1 0 1 0-2.1-2.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 8.4l8 6.2a1.4 1.4 0 0 1-.9 2.5H4.9a1.4 1.4 0 0 1-.9-2.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg><span>衣橱</span></button></nav>
 <div id="photo" class="photo" role="dialog" aria-label="照片" aria-hidden="true">
 <figure>
-<img id="photoImg" alt="雨丝截图">
+<img id="photoImg" alt="ATELIER 场景截图">
 <figcaption id="photoTip">长按图片可以保存</figcaption></figure>
 <div class="photo-actions">
-<a id="photoSave" class="pill solid" download="yusi.jpg">保存图片</a>
+<a id="photoSave" class="pill solid" download="atelier-fabric.jpg">保存图片</a>
 <button id="photoShare" class="pill">复制这一双的链接</button>
 <button id="photoClose" class="pill">关闭</button></div></div>
 
