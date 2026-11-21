@@ -178,6 +178,8 @@ export const skinVertex = /* glsl */`
 `;
 
 export const skinFragment = /* glsl */`
+  uniform vec3 skinTint;
+  uniform float skinLightness;
   varying vec3 surfaceNormal;
   varying vec3 eyeDirection;
   varying vec3 restSurface;
@@ -186,19 +188,21 @@ export const skinFragment = /* glsl */`
     if (!gl_FrontFacing) n = -n;
     vec3 light = normalize(vec3(-.50, .67, .72));
     vec3 fill = normalize(vec3(.62, .32, -.45));
-    float diffuse = max(dot(n, light), 0.);
-    float bounce = max(dot(n, fill), 0.);
-    float illumination = .75 + .24 * diffuse + .08 * bounce;
-    float rim = pow(1. - max(dot(n, normalize(eyeDirection)), 0.), 3.);
-    vec3 skinColor = mix(vec3(.76, .56, .53), vec3(.92, .77, .72), .62);
-    skinColor = skinColor * illumination + vec3(.025, .020, .018) * rim;
+    // The exact default diffuse/incidence skin model used by the upstream
+    // MartinDelophy fabric shader. The same formula is used underneath cloth.
+    vec3 view = normalize(eyeDirection);
+    float incidence = clamp(dot(n,view),0.,1.);
+    float modeled = smoothstep(-.55,.70,dot(n,light));
+    vec3 skinColor = mix(vec3(.68,.46,.45),vec3(.89,.73,.72),modeled);
+    skinColor *= mix(vec3(.88,.80,.84),vec3(1.),smoothstep(.01,.70,incidence));
+    skinColor *= skinTint * skinLightness;
     // Preserve the original cutaway range and independent outline fade.
     // Both-sided light skin, rather than a black outlined interior, makes
     // the exposed cross section readable at elevated viewing angles.
     float edgeFade = 1. - smoothstep(.783,.861,restSurface.y);
     if (!gl_FrontFacing) {
       // Interior has gentler fill light than the outward textile surface.
-      skinColor = mix(skinColor, vec3(.88,.75,.73), .30);
+      skinColor = mix(skinColor, vec3(.82,.66,.66)*skinTint*skinLightness, .12);
     }
     gl_FragColor = vec4(skinColor, edgeFade);
     #include <colorspace_fragment>
@@ -222,6 +226,8 @@ export const fabricVertex = /* glsl */`
 `;
 
 export const fabricFragment = /* glsl */`
+  uniform vec3 skinTint;
+  uniform float skinLightness;
   uniform vec3 dye;
   uniform vec3 wetDye;
   uniform vec3 tint;
@@ -276,8 +282,10 @@ export const fabricFragment = /* glsl */`
     float diffuse = dot(n,light);
     float modeled = smoothstep(-.55,.70,diffuse);
     float shade = mix(.68,1.06,modeled);
+    // Identical upstream default skin formula on skin and cloth surfaces.
     vec3 skin = mix(vec3(.68,.46,.45),vec3(.89,.73,.72),modeled);
     skin *= mix(vec3(.88,.80,.84),vec3(1.),smoothstep(.01,.70,incidence));
+    skin *= skinTint * skinLightness;
     float h = localPoint.y;
     float angle = atan(localPoint.x+.006,localPoint.z-.030) / 6.2831853 + .5;
     vec2 textile = vec2(angle*17.,h*14.);
