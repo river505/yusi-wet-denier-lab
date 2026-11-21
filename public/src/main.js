@@ -2,7 +2,7 @@ import * as THREE from '../vendor/three.module.js';
 import { loadMesh } from './mesh.js';
 import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragment, skinVertex, stageFragment, stageVertex, panoramaVertex, outlineVertex, outlineFragment } from './shaders.js';
 import { initUI } from './ui.js';
-import { applyPose } from './pose.js';
+import { applyPose, isMotionPose, isSeatedPose } from './pose.js';
 import { createSpatialEnvironment } from './environment.js';
 
 const canvas = document.getElementById('view');
@@ -34,7 +34,8 @@ const patterns = ['none', 'dots', 'argyle', 'net', 'hoops', 'pins', 'seam', 'hea
 const defaultLeg = { length: 'thigh', cuff: 'lace', material: 'sheer', denier: 40, color: 'ink' };
 const restTarget = new THREE.Vector3(0, .43, .035);
 const maxStains = 24;
-const poses = ['single', 'together', 'step', 'crossed', 'tiptoe', 'point', 'pigeon'];
+const poses = ['single', 'together', 'step', 'crossed', 'tiptoe', 'point', 'pigeon',
+  'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick'];
 
 function createSound() {
   let context;
@@ -322,6 +323,33 @@ function createEngine({ stocking }) {
     return { group, skinMesh, cloth, outline, reflection, contact, nextStain: 0 };
   });
 
+  // Neutral seat prop, anchored in the same world coordinates as the posed
+  // pelvis and stage. Hidden for standing/walking/running actions.
+  const chair = new THREE.Group();
+  const seatMat = new THREE.MeshStandardMaterial({color:'#cdc2c4',roughness:.88,metalness:.02});
+  const frameMat = new THREE.MeshStandardMaterial({color:'#797883',roughness:.51,metalness:.14});
+  const seatPart=(w,h,d,x,y,z,mat)=>{
+    const part=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+    part.position.set(x,y,z);part.receiveShadow=true;chair.add(part);
+  };
+  seatPart(.73,.035,.46,0,.54,-.15,seatMat);
+  seatPart(.70,.39,.030,0,.795,-.40,seatMat);
+  for(const x of [-.30,.30]){
+    for(const z of [-.34,.03])seatPart(.025,.53,.025,x,.265,z,frameMat);
+  }
+  chair.visible=false;
+  world.add(chair);
+
+  // A stable rest-mesh vertex near the front arch keeps soft contact decals
+  // aligned to animated feet rather than to their hip/group transforms.
+  const restFeet=stocking.attributes.position;
+  let footVertex=0,minFootDistance=Infinity;
+  for(let i=0;i<restFeet.count;i++){
+    const dx=restFeet.getX(i),dy=restFeet.getY(i)-.035,dz=restFeet.getZ(i)-.105;
+    const d=dx*dx+dy*dy+dz*dz;
+    if(d<minFootDistance){minFootDistance=d;footVertex=i;}
+  }
+  const contactProbe=new THREE.Vector3();
   const droplets = [];
   const ripples = [];
   const dropletGeometry = new THREE.IcosahedronGeometry(1, 1);
@@ -344,6 +372,8 @@ function createEngine({ stocking }) {
   let slow = false;
   let rainClock = 0;
   let playClock = 0;
+  let motionClock = 0, lastMotionUpdate = -Infinity;
+  const motionHz = {kick:.85,walk:1.18,run:1.85,sitBounce:2.5,sitCrossKick:1.05};
   let width = 1;
   let height = 1;
   let projectionLeft = 0;
@@ -407,24 +437,41 @@ function createEngine({ stocking }) {
     models.forEach(({ cloth }, index) => updateFabric(cloth.material.uniforms, wardrobe[index]));
   }
 
-  function setPose(name) {
-    const next = poses.includes(name) ? name : 'step';
-    if (next === pose && models[0].cloth.geometry.hasAttribute('restPosition')) return;
-    pose = next;
+  function placePose(phase=0) {
+    const seated=isSeatedPose(pose),moving=isMotionPose(pose);
+    chair.visible=seated;
     models.forEach(({ group, skinMesh, cloth, reflection, contact }, index) => {
-      applyPose(skinMesh.geometry, stocking, pose, index);
-      const { x, y, z, visible } = applyPose(cloth.geometry, stocking, pose, index);
-      group.position.set(x, y, z);
-      group.visible = visible;
-      contact.visible = visible && !belowGround;
-      contact.position.set(x, .0032, z + .09);
-      reflection.position.set(x, -y, z);
-      reflection.visible = visible && !belowGround &&
-        reflection.material.uniforms.reflection.value > 0;
+      applyPose(skinMesh.geometry,stocking,pose,index,phase);
+      const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase);
+      group.position.set(x,y,z);
+      group.visible=visible;
+      group.updateMatrixWorld(true);
+      // Contact follows the posed foot, and is suppressed while airborne.
+      const p=cloth.geometry.attributes.position;
+      contactProbe.set(p.getX(footVertex),p.getY(footVertex),p.getZ(footVertex));
+      group.localToWorld(contactProbe);
+      contact.position.set(contactProbe.x,.0032,contactProbe.z);
+      contact.visible=visible&&!belowGround&&contactProbe.y<.085;
+      reflection.position.set(x,-y,z);
+      reflection.visible=visible&&!belowGround&&!seated&&!moving&&
+        reflection.material.uniforms.reflection.value>0;
     });
-    if (!shadowCache.has(pose)) shadowCache.set(pose, bakeFloorShadow(models));
-    floorShade.material.map = shadowCache.get(pose);
-    floorShade.material.needsUpdate = true;
+    floorShade.visible=!seated&&!moving&&!belowGround;
+  }
+  function setPose(name) {
+    const next=poses.includes(name)?name:'step';
+    if(next===pose&&models[0].cloth.geometry.hasAttribute('restPosition'))return;
+    pose=next;
+    motionClock=0;
+    lastMotionUpdate=-Infinity;
+    placePose(0);
+    // Static ground shadows can be baked once. Animated and seated poses use
+    // the moving foot decals / chair instead of a frozen standing silhouette.
+    if(!isMotionPose(pose)&&!isSeatedPose(pose)){
+      if(!shadowCache.has(pose))shadowCache.set(pose,bakeFloorShadow(models));
+      floorShade.material.map=shadowCache.get(pose);
+      floorShade.material.needsUpdate=true;
+    }
   }
 
   function resetCamera() {
@@ -701,6 +748,13 @@ function createEngine({ stocking }) {
     const dt = Math.max(0, Math.min(.05, (time - lastTime) * .001));
     lastTime = time;
     playClock += dt * (slow ? .20 : 1);
+    if(isMotionPose(pose)){
+      motionClock += dt * (slow ? .25 : 1);
+      if(motionClock-lastMotionUpdate >= 1/30){
+        placePose(motionClock * (motionHz[pose]||1));
+        lastMotionUpdate=motionClock;
+      }
+    }
     backdropMaterial.uniforms.time.value = playClock;
     spatialEnvironment.update(dt * (slow ? .20 : 1));
     updateCamera(dt);
