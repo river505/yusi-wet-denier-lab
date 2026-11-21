@@ -239,7 +239,9 @@ function updateFabric(uniforms, clothes) {
   uniforms.lengthLimit.value = limit;
   uniforms.band.value = band;
   uniforms.denier.value = THREE.MathUtils.clamp(Number(config.denier) || 40,5,200);
-  uniforms.toeStyle.value = Math.max(0,['natural','reinforced','seamless','tabi'].indexOf(config.toeStyle));
+  // Preserve old saved "tabi" values while using the correct thong design.
+  uniforms.toeStyle.value=['thong','tabi'].includes(config.toeStyle)?3:
+    Math.max(0,['natural','reinforced','seamless'].indexOf(config.toeStyle));
   uniforms.patternDensity.value=THREE.MathUtils.clamp(Number(config.patternDensity)||100,20,200)/100;
   uniforms.patternRandomness.value=THREE.MathUtils.clamp(Number(config.patternRandomness??45),0,100)/100;
   uniforms.fabric.value = Math.max(0, styles.indexOf(config.material));
