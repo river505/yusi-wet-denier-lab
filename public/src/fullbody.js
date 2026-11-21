@@ -427,6 +427,16 @@ function refreshShape(){
   if(!geometry)return;
   reconstructShape();
   shapedPositions=new Float32Array(geometry.attributes.position.array);
+  // A separate skirt cannot share body vertices, but its waistband needs
+  // to follow the model's waist/hip proportions to avoid body intersection.
+  const skirt=garments.find(m=>m.name==='skirt');
+  if(skirt){
+    const f=state.figure;
+    const hip=1+(num(f.hips,75,140)-100)/160;
+    const waist=1+(num(f.waist,70,145)-100)/130;
+    const w=Math.max(.86,Math.min(1.36,hip*.55+waist*.45));
+    skirt.scale.set(w,1,w);
+  }
   updatePose(animClock);
 }
 function updateAppearance(){
