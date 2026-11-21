@@ -61,8 +61,8 @@ function createSound() {
         for(let i=0;i<rainData.length;i++)rainData[i]=Math.random()*2-1;
         const seam=Math.floor(context.sampleRate*.025);
         for(let i=0;i<seam;i++) {
-          const w=i/seam,at=rainData.length-seam+i;
-          rainData[at]=rainData[at]*(1-w)+rainData[i]*w;
+          const w=(i+1)/seam,at=rainData.length-seam+i;
+          rainData[at]=rainData[at]*(1-w)+rainData[seam-1-i]*w;
         }
       }
       if(context.state==='suspended')context.resume().catch(()=>{});
