@@ -256,11 +256,12 @@ function createEngine({ stocking }) {
     // The skin shader recesses its vertices slightly so cloth stays outside and anti-z-fights.
     const skinMesh = new THREE.Mesh(stocking.clone(), new THREE.ShaderMaterial({
       vertexShader: skinVertex, fragmentShader: skinFragment,
-      // Keep skin opaque in the main depth buffer. Its upper cutaway uses
-      // MSAA alpha-to-coverage rather than blending the entire limb, so the
-      // near leg fully occludes the far leg away from the fade band.
+      // Opaque, depth-writing skin on both sides of the open leg.
+      // Its inward-facing surface screens the dark BackSide outline when
+      // looking down the cut, while MSAA coverage softens only the top fade.
+      // No transparent skin sorting: the near leg still occludes the far one.
       transparent: false, depthTest: true, depthWrite: true,
-      alphaToCoverage: true, side: THREE.FrontSide,
+      alphaToCoverage: true, side: THREE.DoubleSide,
     }));
     skinMesh.renderOrder = 0;
     group.add(skinMesh);
@@ -415,12 +416,10 @@ function createEngine({ stocking }) {
   }
 
   function orbit(dx, dy) {
-    // Direct-manipulation orbit: dragging left rotates the visible subject
-    // right; dragging down lifts the subject in the viewport.
-    // The yaw sign is reversed from the legacy camera-drag scheme.
-    // Pitch was already in the requested direction and must be preserved.
-    view.yaw += dx * .009;
-    view.pitch = THREE.MathUtils.clamp(view.pitch - dy * .007, -.60, 1.25);
+    // Revert both drag axes relative to the previous deployment.
+    // Mouse and single-touch drags share this one orbit function.
+    view.yaw -= dx * .009;
+    view.pitch = THREE.MathUtils.clamp(view.pitch + dy * .007, -.60, 1.25);
     lastInput = performance.now();
   }
 
