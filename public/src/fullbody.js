@@ -34,7 +34,9 @@ function loadState() {
   } catch {return cloneDefaults();}
 }
 let state=loadState();
-const num=(v,a,b)=>Math.max(a,Math.min(b,Number(v)||a));
+// Zero is a legitimate neutral face/ankle value. Never use "Number(v)||min":
+// that would force every neutral morph to its negative extreme.
+const num=(v,a,b)=>{const n=Number(v);return Math.max(a,Math.min(b,Number.isFinite(n)?n:a));};
 const sm=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
 const bell=(x,c,w)=>Math.exp(-Math.pow((x-c)/w,2));
 const clothingColors=['#b8a1bd','#e8c9bc','#b3cad1','#f3e8d5','#4b4450','#9aa7a6','#b89493'];
