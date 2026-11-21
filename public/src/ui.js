@@ -81,7 +81,7 @@ const SECRETS = {none: '无', hearts: '藏爱心', stars: '藏星星', paws: '�
 const WET_COLORS = {'': '不变', sakura: '变樱粉', mist: '变雾蓝', taro: '变香芋紫', cherry: '变正红'};
 const DENIERS = {15: '15D', 40: '40D', 70: '70D', 120: '120D', 200: '200D'};
 const clampDenier = value => Math.max(5,Math.min(200,Math.round(Number(value)||40)));
-const TOE_STYLES = {natural:'自然袜尖',reinforced:'加固袜尖',seamless:'轻薄袜尖',tabi:'夹趾袜'};
+const TOE_STYLES = {natural:'自然袜尖',reinforced:'加固袜尖',seamless:'轻薄袜尖',thong:'夹趾袜'};
 const clampPatternDensity=value=>Math.max(20,Math.min(200,Math.round(Number(value)||100)));
 const clampPatternRandomness=value=>Math.max(0,Math.min(100,Math.round(Number(value) || 0)));
 const SCATTERED_PATTERNS=new Set(['dots','argyle','hearts','stars','paws','lace']);
@@ -235,7 +235,10 @@ function deserializeLook(hash) {
       color: decodeColor(color, COLORS) || 'ink',
       secret: Object.hasOwn(SECRETS, secret) ? secret : 'none',
       wetColor: decodeColor(wetColor, COLORS),
-      toeStyle: Object.hasOwn(TOE_STYLES,toeStyle) ? toeStyle : 'natural',
+      // Earlier share links used the incorrect internal "tabi" name.
+      // Interpret them as the corrected toe-thong without breaking URLs.
+      toeStyle: toeStyle==='tabi'?'thong':
+        Object.hasOwn(TOE_STYLES,toeStyle)?toeStyle:'natural',
       patternDensity:clampPatternDensity(density),patternRandomness:clampPatternRandomness(randomness),
     };
   };
