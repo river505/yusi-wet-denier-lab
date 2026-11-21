@@ -1,6 +1,6 @@
 import * as THREE from '../vendor/three.module.js';
 import { loadMesh } from './mesh.js';
-import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, outlineFragment, outlineVertex, stageFragment, stageVertex } from './shaders.js';
+import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragment, skinVertex, stageFragment, stageVertex } from './shaders.js';
 import { initUI } from './ui.js';
 import { applyPose } from './pose.js';
 
@@ -182,7 +182,7 @@ function bakeFloorShadow(models) {
   return new THREE.CanvasTexture(image);
 }
 
-function createEngine({ stocking }) {
+function createEngine({ stocking, skin }) {
   const renderer = new THREE.WebGLRenderer({
     canvas, antialias: true, alpha: false, preserveDrawingBuffer: true,
     powerPreference: mobilePointer ? 'default' : 'high-performance',
@@ -221,18 +221,20 @@ function createEngine({ stocking }) {
   const legMeshes = [];
   const models = [0, 1].map(index => {
     const group = new THREE.Group();
+    // Separate inner skin from the outer textile instead of drawing a black back-side shell.
+    // The skin's reverse faces remain illuminated when the camera looks into the open leg.
+    const skinMesh = new THREE.Mesh(skin.clone(), new THREE.ShaderMaterial({
+      vertexShader: skinVertex, fragmentShader: skinFragment,
+      side: THREE.DoubleSide, depthWrite: true,
+    }));
+    skinMesh.renderOrder = 0;
+    group.add(skinMesh);
     const geometry = stocking.clone();
     const cloth = new THREE.Mesh(geometry, fabricMaterial());
     cloth.userData.leg = index;
+    cloth.material.depthWrite = false;
     cloth.renderOrder = 1;
     group.add(cloth);
-    const outline = new THREE.Mesh(geometry, new THREE.ShaderMaterial({
-      uniforms: { lengthLimit: cloth.material.uniforms.lengthLimit },
-      vertexShader: outlineVertex, fragmentShader: outlineFragment,
-      transparent: true, side: THREE.BackSide,
-    }));
-    outline.renderOrder = 0;
-    group.add(outline);
     const reflectionMaterial = new THREE.ShaderMaterial({
       uniforms: { ...cloth.material.uniforms, reflection: { value: 0 } },
       vertexShader: fabricVertex, fragmentShader: fabricFragment,
@@ -252,7 +254,7 @@ function createEngine({ stocking }) {
     group.scale.x = index === 0 ? 1 : -1;
     world.add(group);
     legMeshes.push(cloth);
-    return { group, cloth, reflection, nextStain: 0 };
+    return { group, skinMesh, cloth, reflection, nextStain: 0 };
   });
 
   const droplets = [];
@@ -315,7 +317,8 @@ function createEngine({ stocking }) {
     const next = poses.includes(name) ? name : 'step';
     if (next === pose && models[0].cloth.geometry.hasAttribute('restPosition')) return;
     pose = next;
-    models.forEach(({ group, cloth, reflection }, index) => {
+    models.forEach(({ group, skinMesh, cloth, reflection }, index) => {
+      applyPose(skinMesh.geometry, skin, pose, index);
       const { x, y, z, visible } = applyPose(cloth.geometry, stocking, pose, index);
       group.position.set(x, y, z);
       group.visible = visible;
