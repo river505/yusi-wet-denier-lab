@@ -1382,3 +1382,11 @@ body.fine .pane-hint.keys {
 @media(max-width:355px){
   .atelier-view-switch {top:calc(72px + var(--safe-t));}
 }
+
+/* Independent density/jitter sliders for non-overlapping printed motifs. */
+.pattern-controls[hidden]{display:none!important}
+.pattern-controls{display:grid;gap:7px;width:100%;padding:8px 0}
+.pattern-range{display:flex;align-items:center;gap:10px;min-width:0;width:100%}
+.pattern-range input[type="range"]{min-width:0;flex:1;max-width:100%;accent-color:#9580a5;touch-action:pan-y}
+.pattern-range output{flex:0 0 43px;font-size:11px;font-variant-numeric:tabular-nums;text-align:right;color:var(--ink)}
+.motion-control button[hidden]{display:none!important}
