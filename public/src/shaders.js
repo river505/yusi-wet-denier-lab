@@ -215,16 +215,22 @@ export const skinFragment = /* glsl */`
   void main() {
     vec3 n = normalize(surfaceNormal);
     if (!gl_FrontFacing) n = -n;
-    vec3 light = normalize(vec3(-.50, .67, .72));
-    vec3 fill = normalize(vec3(.62, .32, -.45));
-    // The exact default diffuse/incidence skin model used by the upstream
-    // MartinDelophy fabric shader. The same formula is used underneath cloth.
-    vec3 view = normalize(eyeDirection);
-    float incidence = clamp(dot(n,view),0.,1.);
-    float modeled = smoothstep(-.55,.70,dot(n,light));
-    vec3 skinColor = mix(vec3(.68,.46,.45),vec3(.89,.73,.72),modeled);
-    skinColor *= mix(vec3(.88,.80,.84),vec3(1.),smoothstep(.01,.70,incidence));
-    skinColor *= skinTint * skinLightness;
+    // Deliberate three-point key, fill and rim; the ordinary Three.js
+    // lights illuminate only scene props, not these custom shaders.
+    vec3 light=normalize(vec3(-.50,.67,.72));
+    vec3 fill=normalize(vec3(.67,.35,-.48));
+    vec3 rim=normalize(vec3(-.26,.48,-.83));
+    vec3 view=normalize(eyeDirection);
+    float incidence=clamp(dot(n,view),0.,1.);
+    float keyLit=smoothstep(-.58,.74,dot(n,light));
+    float fillLit=max(0.,dot(n,fill));
+    float rimLit=pow(max(0.,dot(n,rim)),2.);
+    vec3 skinColor=mix(vec3(.665,.448,.444),vec3(.884,.724,.708),keyLit);
+    skinColor*=mix(vec3(.88,.80,.84),vec3(1.),smoothstep(.01,.70,incidence));
+    skinColor*=.94+.105*fillLit+.04*rimLit;
+    skinColor*=skinTint*skinLightness;
+    float skinSpec=pow(max(0.,dot(n,normalize(light+view))),30.);
+    skinColor+=vec3(.038,.028,.027)*skinSpec;
     // The reference geometry contains five distinct toes. Emphasize its
     // dorsal toe separations and nail plates by lighting, not fake meshes.
     float separation = toeGrooves(restSurface);
@@ -236,11 +242,9 @@ export const skinFragment = /* glsl */`
     // feathering toward white at the top, independently of skin swatches.
     float edgeFade = 1. - smoothstep(.783,.861,restSurface.y);
     if (!gl_FrontFacing) {
-      // Delay the white part until the fade is already underway. This
-      // preserves the requested white interior but prevents a bright,
-      // opaque-looking circular cap at the top of each thigh.
-      float whiteRamp = smoothstep(.758,.865,restSurface.y);
-      skinColor = mix(vec3(.82,.68,.67),vec3(.995,.993,.993),whiteRamp);
+      // Natural warm cutaway, not an artificial brilliant-white cap.
+      float paleRamp=smoothstep(.778,.866,restSurface.y);
+      skinColor=mix(vec3(.82,.68,.67),vec3(.958,.937,.936),paleRamp*.76);
     }
     gl_FragColor = vec4(skinColor, edgeFade);
     #include <colorspace_fragment>
@@ -456,13 +460,14 @@ export const fabricFragment = /* glsl */`
         rgb*=1.-.28*stitched;
       }
       rgb += knit * mix(1.,.22,wetness);
-      // Soft silk / oil sheen is continuous; pearl requires a *different*
-      // microflake layer, not simply a more intense plastic-looking hotspot.
-      float glossStyle = float(fabric == 2.);
-      float pearlStyle = float(fabric == 3.);
-      float clearcoat = .035 + .09*wetness + .11*glossStyle
-                        + .07*pearlStyle + .34*step(6.,fabric);
-      rgb += shine * clearcoat;
+      // Broad cloth fibre sheen plus tighter wet and glossy highlights.
+      // Analytic light is evaluated in view-space from deformed normals.
+      float glossStyle=float(fabric==2.);
+      float pearlStyle=float(fabric==3.);
+      float clearcoat=.065+.15*wetness+.12*glossStyle
+                       +.09*pearlStyle+.34*step(6.,fabric);
+      float broadSheen=pow(max(0.,dot(n,normalize(light+view))),14.);
+      rgb+=shine*clearcoat+broadSheen*(.030+.075*wetness+.030*glossStyle);
       if (fabric == 3.) {
         // Pearl glints must be visible when DRY. The earlier 172x290
         // frequency with 2% rare cells fell below a phone pixel and was
@@ -519,7 +524,7 @@ export const fabricFragment = /* glsl */`
       // ankles and toes, without changing the mesh itself.
       float silhouette=1.-smoothstep(.025,.30,incidence);
       rgb=mix(rgb,mix(vec3(.022,.021,.033),dye,.12),
-        silhouette*(fabric>=4.?.52:.68));
+        silhouette*(fabric >= 4. ? .52 : .68));
     }
     if (garter > 0. && skinOnly == 0. && h > lengthLimit && abs(fract(angle*2.+.3)-.5)<.086) {
       rgb = mix(rgb,dye,.77);
