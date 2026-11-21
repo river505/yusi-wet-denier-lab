@@ -3,6 +3,9 @@
 export function createSpatialEnvironment(T, world) {
   const root = new T.Group();
   world.add(root);
+  // Keep vertical architecture visible under the ground plane. Only objects
+  // registered as walkable or horizontal ground surfaces are hidden.
+  const groundSurfaces = new Set();
   // The source demo renders most surfaces with unlit GLSL; the new physical
   // stages require actual Three.js lights or every floor/wall turns black.
   const ambience=new T.HemisphereLight('#e8f1ff','#817b7b',2.35);
@@ -42,11 +45,16 @@ export function createSpatialEnvironment(T, world) {
   }
   function plane(parent,w,h,material,x=0,y=-.013,z=0) {
     const m=new T.Mesh(new T.PlaneGeometry(w,h),material);
-    m.rotation.x=-Math.PI/2;m.position.set(x,y,z);m.receiveShadow=true;parent.add(m);return m;
+    m.rotation.x=-Math.PI/2;m.position.set(x,y,z);m.receiveShadow=true;parent.add(m);
+    if (y <= .015) groundSurfaces.add(m);
+    return m;
   }
   function box(parent,w,h,d,mat,x,y,z) {
     const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);
-    m.castShadow=false;m.receiveShadow=true;parent.add(m);return m;
+    m.castShadow=false;m.receiveShadow=true;parent.add(m);
+    // Crosswalk stripes and pool coping are part of the walkable surface.
+    if (y <= .055 && h <= .15) groundSurfaces.add(m);
+    return m;
   }
   // Small radius bevels remove the toy-like perfectly sharp bathtub cutouts.
   function roundedBox(parent,w,h,d,radius,material,x,y,z) {
@@ -75,6 +83,7 @@ export function createSpatialEnvironment(T, world) {
   plane(groups.studio,20,20,floorMat('studio'));
   const studioDisc=new T.Mesh(new T.CircleGeometry(1.45,100),new T.MeshBasicMaterial({color:'#e0d7e5',transparent:true,opacity:.25,depthWrite:false}));
   studioDisc.rotation.x=-Math.PI/2;studioDisc.position.set(0,-.01,0);groups.studio.add(studioDisc);
+  groundSurfaces.add(studioDisc);
   const bath=groups.bath;
   plane(bath,15,15,floorMat('bath'));
   const wallTexture=tileTexture('bath');wallTexture.repeat.set(7,3);
@@ -143,7 +152,10 @@ export function createSpatialEnvironment(T, world) {
   let underground = false;
   function setUnderground(flag) {
     underground = Boolean(flag);
-    root.visible = !underground;
+    // Never disable the entire stage: walls, buildings, tub and distant
+    // scenery remain visible so a below-floor camera sees the backdrop.
+    root.visible = true;
+    for (const surface of groundSurfaces) surface.visible = !underground;
   }
   function setScene(name){
     active=groups[name]?name:'studio';
@@ -163,5 +175,5 @@ export function createSpatialEnvironment(T, world) {
   }
   setScene('studio');
   function update(dt){time+=dt;poolWaterMat.uniforms.uTime.value=time;}
-  return{setScene,setUnderground,update,root,groups};
+  return{setScene,setUnderground,update,root,groups,groundSurfaces};
 }
