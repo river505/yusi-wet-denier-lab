@@ -1399,3 +1399,18 @@ body.fine .pane-hint.keys {
 .pose-range input[type=range]{flex:1;min-width:0;width:100%;accent-color:#9580a5;touch-action:pan-y}
 .pose-range output{min-width:44px;font-size:11px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink)}
 .pose-controls .pill{justify-self:start}
+
+/* On phones, reserve a real upper preview area even with long material
+   controls: the new camera fits both legs inside this unobstructed region.
+   Overflowing controls remain scrollable instead of burying the feet. */
+@media (max-width:599px) {
+  body:not(.wide) .sheet {
+    max-height:max(210px,calc(100dvh - max(240px,37dvh) - 105px - var(--safe-b)));
+    overflow-y:auto;
+    overscroll-behavior:contain;
+  }
+  body:not(.wide) .sheet .panes {
+    min-height:0;
+    flex-shrink:1;
+  }
+}
