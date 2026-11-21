@@ -6,12 +6,15 @@ const canvas = $('fullbodyCanvas');
 const hint = $('fbHint');
 const STORAGE = 'atelier.fullbody.v1';
 const DEFAULTS = {
-  figure: { height:167, weight:56, waist:100, hips:105, chest:100, shoulders:100, legLength:100 },
+  figure: { height:167, weight:56, waist:100, hips:105, chest:100, shoulders:100, legLength:100, legSpacing:100 },
   face: { eyesH:0, noseW:0, lipsW:0, jawW:0, faceRound:0, faceLength:0 },
   hair: { style:'long', color:'#30252b', length:100, volume:100, fringe:38 },
   outfit:'dress', outfitColor:'#b8a1bd', skin:'#cfaaa2',
   material:'pearl', stockings:true, denier:40, fabricColor:'#b9a3c0', wet:0,
   pose:'neutral', scene:'studio', rain:false, speed:100, amplitude:100,
+  legTarget:'both', footPitch:[0,0],
+  stockingLegs:[{denier:40,color:'#b9a3c0',material:'pearl',length:'thigh'},
+                {denier:40,color:'#b9a3c0',material:'pearl',length:'thigh'}],
 };
 const cloneDefaults=()=>JSON.parse(JSON.stringify(DEFAULTS));
 function loadState() {
@@ -22,8 +25,11 @@ function loadState() {
     for(const key of ['figure','face','hair']) if(obj[key]&&typeof obj[key]==='object')
       Object.assign(s[key],obj[key]);
     for(const key of ['outfit','outfitColor','skin','material','stockings','denier',
-      'fabricColor','wet','pose','scene','rain','speed','amplitude'])
+      'fabricColor','wet','pose','scene','rain','speed','amplitude','legTarget'])
       if(obj[key]!==undefined)s[key]=obj[key];
+    if(Array.isArray(obj.footPitch))s.footPitch=[0,1].map(i=>Math.max(-35,Math.min(35,Number(obj.footPitch[i])||0)));
+    if(Array.isArray(obj.stockingLegs))
+      s.stockingLegs=s.stockingLegs.map((side,i)=>({...side,...(obj.stockingLegs[i]||{})}));
     return s;
   } catch {return cloneDefaults();}
 }
@@ -155,7 +161,8 @@ function createGarments(){
     ['shorts',(x,y)=>y>.78&&y<1.05&&Math.abs(x)<.23,'bottom'],
     ['trousers',(x,y)=>y>.052&&y<1.04&&Math.abs(x)<.24,'bottom'],
     ['swimsuit',(x,y)=>y>.82&&y<1.39&&Math.abs(x)<.205,'top'],
-    ['stocking',(x,y)=>y<.92&&y>.026&&Math.abs(x)<.255,'stocking'],
+    ['stockingL',(x,y)=>y<.92&&y>.026&&x>=0&&Math.abs(x)<.255,'stocking'],
+    ['stockingR',(x,y)=>y<.92&&y>.026&&x<0&&Math.abs(x)<.255,'stocking'],
   ];
   for(const [name,test,type] of definitions){
     const mat=overlayMaterial(state.outfitColor,type==='stocking'?.43:.72);
@@ -175,18 +182,21 @@ function createGarments(){
 }
 function updateWardrobe(){
   for(const g of garments){
-    g.visible=g.name==='stocking'?Boolean(state.stockings):
+    g.visible=g.name.startsWith('stocking')?Boolean(state.stockings):
       state.outfit==='dress'?(g.name==='dressTop'||g.name==='skirt'):
       state.outfit==='athletic'?(g.name==='sportTop'||g.name==='shorts'):
       state.outfit==='casual'?(g.name==='dressTop'||g.name==='trousers'):
       state.outfit==='swim'?(g.name==='swimsuit'):false;
-    if(g.name==='stocking'){
-      const d=num(state.denier,5,200);
-      g.material.color.set(state.fabricColor);
-      g.material.opacity=state.material==='cotton'?.94:.18+.78*(1-Math.exp(-d/55));
-      g.material.roughness=state.material==='matte'?.95:state.material==='gloss'?.21:state.material==='pearl'?.29:.48;
-      g.material.clearcoat=state.material==='pearl'?1:.72;
-      g.material.clearcoatRoughness=state.material==='pearl'?.10:.34;
+    if(g.name.startsWith('stocking')){
+      const index=g.name==='stockingR'?1:0;
+      const leg=state.stockingLegs[index];
+      const d=num(leg.denier,5,200);
+      g.material.color.set(leg.color);
+      g.material.opacity=leg.material==='cotton'?.94:.18+.78*(1-Math.exp(-d/55));
+      g.material.roughness=leg.material==='matte'?.95:leg.material==='gloss'?.21:leg.material==='pearl'?.29:.48;
+      g.material.clearcoat=leg.material==='pearl'?1:.72;
+      g.material.clearcoatRoughness=Math.max(.065,(leg.material==='pearl'?.12:.34)*(1-state.wet*.58));
+      g.material.roughness=Math.max(.08,g.material.roughness*(1-state.wet*.46));
       g.material.opacity=Math.min(.985,g.material.opacity+(state.wet*.025));
       g.material.needsUpdate=true;
     }else{
@@ -196,27 +206,30 @@ function updateWardrobe(){
   }
 }
 function changePearlMaterial(){
-  const m=garments.find(x=>x.name==='stocking')?.material;
-  if(!m)return;
-  // This is an independent full-body cloth surface. Dry pearls remain
-  // bright even when wet=0 and are anchored in model coordinates.
-  m.onBeforeCompile=sh=>{
-    sh.uniforms.atelierPearl={value:state.material==='pearl'?1:0};
+  for(const garment of garments.filter(x=>x.name.startsWith('stocking'))){
+    const index=garment.name==='stockingR'?1:0;
+    const m=garment.material;
+    // Both sides maintain separate fabric masks, deniers and optical values.
+    m.onBeforeCompile=sh=>{
+    sh.uniforms.atelierPearl={value:state.stockingLegs[index].material==='pearl'?1:0};
     sh.uniforms.atelierWet={value:num(state.wet,0,1)};
+    sh.uniforms.atelierLength={value:({ankle:.19,knee:.56,thigh:.93,tights:1.10})[state.stockingLegs[index].length]||.93};
     m.userData.shader=sh;
     sh.vertexShader=sh.vertexShader.replace('#include <common>',
       '#include <common>\n varying vec3 vAtelierPos;');
     sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>',
       '#include <begin_vertex>\n vAtelierPos=position; transformed += normal*.0047;');
     sh.fragmentShader=sh.fragmentShader.replace('#include <common>',
-      '#include <common>\n varying vec3 vAtelierPos; uniform float atelierPearl; uniform float atelierWet;');
+      '#include <common>\n varying vec3 vAtelierPos; uniform float atelierPearl; uniform float atelierWet; uniform float atelierLength;');
     sh.fragmentShader=sh.fragmentShader.replace('#include <dithering_fragment>',
-      'vec3 q=floor(vAtelierPos.xyz*110.); float sparkle=fract(sin(dot(q,vec3(17.27,61.23,39.81)))*43758.5453);'
+      'if(vAtelierPos.y>atelierLength) discard;'
+      +'vec3 q=floor(vAtelierPos.xyz*110.); float sparkle=fract(sin(dot(q,vec3(17.27,61.23,39.81)))*43758.5453);'
       +'float glint=smoothstep(.73,.99,sparkle);'
       +'gl_FragColor.rgb=mix(gl_FragColor.rgb,vec3(1.,.965,.99),atelierPearl*glint*(.46+.16*atelierWet));'
       +'#include <dithering_fragment>');
-  };
-  m.needsUpdate=true;
+    };
+    m.needsUpdate=true;
+  }
 }
 
 function hairPiece(vertices,color){
@@ -339,6 +352,8 @@ function poseAngles(time){
   }
   if(name==='kick'){const v=(1-Math.cos(phase))*.5;L.hip=-70*amp*v;L.knee=26*(1-v);}
   if(name==='sitBounce'){L.knee+=13*amp*Math.sin(phase);R.knee+=9*amp*Math.sin(phase+1.5);}
+  L.ankle+=Math.max(-35,Math.min(35,Number(state.footPitch[0])||0));
+  R.ankle+=Math.max(-35,Math.min(35,Number(state.footPitch[1])||0));
   return [L,R];
 }
 function updatePose(t){
@@ -364,6 +379,7 @@ function updatePose(t){
         rotateX(v,sx,.54,.005,a.knee,kneeWeight);
         rotateX(v,sx,.95,0,a.hip,hipWeight);
         rotateZ(v,sx,.95,0,a.side,hipWeight);
+        v[0]+=sx*(num(state.figure.legSpacing,75,155)/100-1)*hipWeight;
       }
       pos[i]=v[0];pos[i+1]=v[1];pos[i+2]=v[2];
     }
@@ -413,6 +429,7 @@ function openPanel(open){$('fbPanel').classList.toggle('closed',!open);$('fbTogg
 function save(){try{localStorage.setItem(STORAGE,JSON.stringify(state));}catch{}}
 const specs={
  figure:[['height','身高',150,185,1,'cm'],['weight','体重',42,90,1,'kg'],
+  ['legSpacing','双腿间距',75,155,5,'%'],
   ['waist','腰部比例',70,145,1,'%'],['hips','臀部比例',75,140,1,'%'],
   ['chest','胸部轮廓',75,145,1,'%'],['shoulders','肩宽比例',75,140,1,'%'],
   ['legLength','腿长比例',80,125,1,'%']],
