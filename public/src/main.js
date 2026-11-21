@@ -686,10 +686,12 @@ function createEngine({ stocking }) {
         footPitch,footMotion,legMorph);
       const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase,
         motionAmplitude,footPitch,footMotion,legMorph);
-      const repair=visible&&heelShellNeeded(index);
+      let repair=visible&&heelShellNeeded(index);
+      if(repair)repair=updateHeelShell(heelShell,cloth.geometry);
+      // On extreme poses whose generated shell turns inward, render the
+      // unchanged prior mesh instead of a visibly worse corrective patch.
       cloth.material.uniforms.heelCut.value=repair?1:0;
       heelMesh.visible=repair;
-      if(repair)updateHeelShell(heelShell,cloth.geometry);
       const scale=legMorph.height;
       group.scale.set((index===0?1:-1)*scale,scale,scale);
       // Preserve anatomical hip pivots: adjust only bilateral placement,
