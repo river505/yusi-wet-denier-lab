@@ -201,7 +201,7 @@ function createSound() {
   };
 }
 
-function fabricMaterial(skinAppearance) {
+function fabricMaterial(skinAppearance,footSurface) {
   return new THREE.ShaderMaterial({
     uniforms: {
       dye: { value: new THREE.Color(palette.ink) },
@@ -209,6 +209,8 @@ function fabricMaterial(skinAppearance) {
       tint: { value: new THREE.Color(0xffffff) },
       skinTint: skinAppearance.tint,
       skinLightness: skinAppearance.lightness,
+      footDetail: footSurface.detail,
+      soleWrinkle: footSurface.wrinkles,
       lengthLimit: { value: .7 },
       band: { value: .05 },
       denier: { value: 40 },
@@ -394,6 +396,10 @@ function createEngine({ stocking }) {
     tint: { value: new THREE.Vector3(1,1,1) },
     lightness: { value: 1 },
   };
+  const footSurface={
+    detail:{value:1},
+    wrinkles:{value:.7},
+  };
   const legMeshes = [];
   const models = [0, 1].map(index => {
     const group = new THREE.Group();
@@ -401,7 +407,10 @@ function createEngine({ stocking }) {
     // The supplied 'skin' GLB mesh covers only the upper thigh, leaving a gap below it.
     // The skin shader recesses its vertices slightly so cloth stays outside and anti-z-fights.
     const skinMesh = new THREE.Mesh(stocking.clone(), new THREE.ShaderMaterial({
-      uniforms: { skinTint: skinAppearance.tint, skinLightness: skinAppearance.lightness },
+      uniforms: {
+        skinTint:skinAppearance.tint,skinLightness:skinAppearance.lightness,
+        footDetail:footSurface.detail,soleWrinkle:footSurface.wrinkles,
+      },
       vertexShader: skinVertex, fragmentShader: skinFragment,
       // Opaque, depth-writing skin on both sides of the open leg.
       // Its inward-facing surface screens the dark BackSide outline when
@@ -413,7 +422,7 @@ function createEngine({ stocking }) {
     skinMesh.renderOrder = 0;
     group.add(skinMesh);
     const geometry = stocking.clone();
-    const cloth = new THREE.Mesh(geometry, fabricMaterial(skinAppearance));
+    const cloth = new THREE.Mesh(geometry, fabricMaterial(skinAppearance,footSurface));
     cloth.userData.leg = index;
     cloth.material.depthWrite = false;
     cloth.renderOrder = 1;
@@ -1163,6 +1172,14 @@ function createEngine({ stocking }) {
   return {
     setScene, setSkinAppearance, setMaterial, setPose, setPanelFraming,
     zoom, orbit, resetCamera, focusToes, bucket, dry, photo, thumbnail,
+    setFootDetail(value){
+      footSurface.detail.value=THREE.MathUtils.clamp(
+        Number.isFinite(Number(value))?Number(value):1,0,2);
+    },
+    setSoleWrinkle(value){
+      footSurface.wrinkles.value=THREE.MathUtils.clamp(
+        Number.isFinite(Number(value))?Number(value):.7,0,2);
+    },
     setLegSpacing(percent) {
       const next=THREE.MathUtils.clamp((Number(percent)||100)/100,.75,1.55);
       if(Math.abs(next-legSpacing)<.001)return;
