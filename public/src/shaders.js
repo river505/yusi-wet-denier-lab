@@ -409,19 +409,28 @@ export const fabricFragment = /* glsl */`
                         + .07*pearlStyle + .34*step(6.,fabric);
       rgb += shine * clearcoat;
       if (fabric == 3.) {
-        // Stable micro-glints attached to the leg REST coordinates.
-        // No screenspace noise, so orbiting the camera does not make the
-        // pearls swim across the stocking; low-density cells keep iOS GPU
-        // ALU work bounded. A second broad lobe mimics pearlescent fibres.
-        vec2 fleckUV = vec2(angle*172.,h*290.);
+        // Pearl glints must be visible when DRY. The earlier 172x290
+        // frequency with 2% rare cells fell below a phone pixel and was
+        // antialiased away. Each new microflake occupies several screen
+        // samples at mobile portrait scale, with deterministic REST coords.
+        vec2 fleckUV = vec2(angle*56.,h*115.);
         vec2 cell = floor(fleckUV);
         vec2 f = fract(fleckUV)-.5;
-        float pearlSeed = hash(cell+vec2(11.,3.));
-        float sparkle = smoothstep(.976,.995,pearlSeed)
-                      * (1.-smoothstep(.06,.34,length(f)));
-        float softLobe = pow(1.-incidence,3.)*.045;
-        vec3 pearlLight = mix(vec3(.96,.84,.89),vec3(.98,.96,1.),modeled);
-        rgb += pearlLight*(sparkle*(.23+.22*wetness) + softLobe);
+        float seed = hash(cell+vec2(11.,3.));
+        vec2 jitter = .20*(vec2(hash(cell+vec2(37.,7.)),
+                                  hash(cell+vec2(5.,41.)))-.5);
+        float shape = 1.-smoothstep(.09,.34,length(f-jitter));
+        float chosen = smoothstep(.77,.95,seed);
+        float glint = chosen * shape;
+        // The visual sparkle is a bright fibre reflection, not a wet
+        // opacity mask. Viewing angle changes its intensity, but not its
+        // anchored position. A soft pearlescent sheen remains between dots.
+        float sparkleLight = .72+.28*max(0.,dot(n,normalize(light+view)));
+        vec3 pearlWhite = mix(vec3(1.,.93,.95),vec3(.96,.98,1.),modeled);
+        rgb = mix(rgb,pearlWhite,clamp(glint * (.79+.15*wetness)
+                       * sparkleLight,0.,.94));
+        float softLobe = pow(1.-incidence,3.)*.055;
+        rgb += pearlWhite*softLobe;
       }
       if (wetness > .06 && fabric < 4.) {
         // Sparse point highlights confined to already wet fragments.
