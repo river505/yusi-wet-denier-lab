@@ -701,6 +701,7 @@ body.about-open .about {
   white-space:nowrap;
 }
 .motion-speed { display:flex; align-items:center; gap:8px; flex:1; min-width:140px; }
+.motion-speed[hidden] { display:none; }
 .motion-speed input[type=range] {
   flex:1;
   min-width:80px;
@@ -1361,6 +1362,7 @@ body.fine .pane-hint.keys {
   box-shadow:0 5px 19px rgba(75,60,85,.13);
   white-space:nowrap;
 }
+.atelier-view-switch[hidden] { display:none !important; }
 .atelier-view-switch a {
   display:block;
   border-radius:22px;
