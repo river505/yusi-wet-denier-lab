@@ -609,6 +609,28 @@ body.about-open .about {
   padding:0
 }
 
+.skin-lightness {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  min-width:0;
+}
+.skin-lightness input[type=range] {
+  flex:1;
+  width:100%;
+  min-width:72px;
+  accent-color:#c48f8b;
+  cursor:pointer;
+  touch-action:auto;
+}
+.skin-lightness output {
+  min-width:44px;
+  text-align:right;
+  font-size:11px;
+  color:var(--ink-soft);
+  font-variant-numeric:tabular-nums;
+}
 .sheet-foot {
   display:flex;
   align-items:center;
