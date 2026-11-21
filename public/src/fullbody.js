@@ -43,14 +43,14 @@ const clothingColors=['#b8a1bd','#e8c9bc','#b3cad1','#f3e8d5','#4b4450','#9aa7a6
 const hairColors=['#30252b','#5e4435','#906744','#c7a072','#17171d','#9d7772','#c6bcc0'];
 const skinColors=['#e7c9bf','#cfaaa2','#b99585','#a47d65','#765847','#d5bbb1'];
 const POSES={
-  neutral:'自然站姿',step:'迈步',crossed:'交叉',tiptoe:'踮脚',
+  neutral:'自然站姿',step:'迈步',crossed:'交叉',tiptoe:'踮脚',point:'足尖点地',pigeon:'内八',
   sitNatural:'自然坐姿',sitReach:'坐姿前伸',sitCross:'坐姿二郎腿',
   lieFlat:'平躺',lieBent:'平躺屈膝',
   lieCrossLeft:'平躺左搭右',lieCrossRight:'平躺右搭左',
   lieSideLeft:'左侧躺',lieSideRight:'右侧躺',
-  kick:'踢腿',walk:'步行',run:'跑步',sitBounce:'坐姿抖腿',
+  kick:'踢腿',walk:'步行',run:'跑步',sitBounce:'坐姿抖腿',sitCrossKick:'二郎腿前踢',
 };
-const MOTION=new Set(['kick','walk','run','sitBounce']);
+const MOTION=new Set(['kick','walk','run','sitBounce','sitCrossKick']);
 const OUTFITS={dress:'短裙套装',athletic:'运动套装',casual:'休闲长裤',swim:'连体泳装'};
 const FABRICS={sheer:'轻薄丝',matte:'哑光',gloss:'亮泽',pearl:'珠光',cotton:'棉质'};
 const LEG_TARGETS={both:'双腿',left:'左腿',right:'右腿'};
@@ -342,9 +342,11 @@ function poseAngles(time){
   if(name==='step'){L.hip=-16;L.knee=20;R.hip=5;}
   if(name==='crossed'){L.hip=-12;L.knee=14;L.side=-10;R.side=4;}
   if(name==='tiptoe'){L.ankle=24;R.ankle=24;}
+  if(name==='point'){L.hip=-16;L.knee=17;L.ankle=34;}
+  if(name==='pigeon'){L.side=12;R.side=-12;}
   if(name==='sitNatural'||name==='sitBounce'){L.hip=-83;R.hip=-83;L.knee=83;R.knee=83;}
   if(name==='sitReach'){L.hip=-80;R.hip=-80;L.knee=24;R.knee=78;}
-  if(name==='sitCross'){L.hip=-99;L.knee=62;L.side=-22;R.hip=-80;R.knee=86;}
+  if(name==='sitCross'||name==='sitCrossKick'){L.hip=-99;L.knee=62;L.side=-22;R.hip=-80;R.knee=86;}
   if(name==='lieBent'||name==='lieCrossLeft'||name==='lieCrossRight'){L.hip=-55;R.hip=-55;L.knee=100;R.knee=100;}
   if(name==='lieCrossLeft'){L.side=-27;L.knee=67;}
   if(name==='lieCrossRight'){R.side=27;R.knee=67;}
@@ -357,6 +359,7 @@ function poseAngles(time){
   }
   if(name==='kick'){const v=(1-Math.cos(phase))*.5;L.hip=-70*amp*v;L.knee=26*(1-v);}
   if(name==='sitBounce'){L.knee+=13*amp*Math.sin(phase);R.knee+=9*amp*Math.sin(phase+1.5);}
+  if(name==='sitCrossKick'){const pulse=(1-Math.cos(phase))*.5;L.hip-=8*pulse*amp;L.knee-=Math.min(50,43*pulse*amp);}
   L.ankle+=Math.max(-35,Math.min(35,Number(state.footPitch[0])||0));
   R.ankle+=Math.max(-35,Math.min(35,Number(state.footPitch[1])||0));
   return [L,R];
