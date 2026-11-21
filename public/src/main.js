@@ -380,7 +380,7 @@ function createEngine({ stocking }) {
   const shadowGeometry = new THREE.PlaneGeometry(.31, .56);
   const shadowCache = new Map();
   const floorShade = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 2), new THREE.MeshBasicMaterial({
-    color: '#9a88a8', transparent: true, opacity: .34, depthWrite: false,
+    color: '#8f7b9b', transparent: true, opacity: .50, depthWrite: false,
   }));
   floorShade.position.set(.425, .001, -.55);
   floorShade.rotation.x = -Math.PI / 2;
@@ -441,7 +441,7 @@ function createEngine({ stocking }) {
     reflection.renderOrder = -4;
     world.add(reflection);
     const contact = new THREE.Mesh(shadowGeometry, new THREE.MeshBasicMaterial({
-      map: contactTexture, color: '#9581a7', transparent: true, opacity: .27, depthWrite: false,
+      map: contactTexture, color: '#8e7c9c', transparent: true, opacity: .36, depthWrite: false,
     }));
     contact.position.set(.02, .002, .061);
     contact.rotation.x = -Math.PI / 2;
@@ -478,8 +478,8 @@ function createEngine({ stocking }) {
   const hitVector = new THREE.Vector2();
   const sound = createSound();
   const pointers = new Map();
-  const view = { yaw: .62, pitch: .1, range: 2.50, target: restTarget.clone() };
-  const liveView = { yaw: .62, pitch: .1, range: 2.50, target: restTarget.clone() };
+  const view = { yaw: .76, pitch: .12, range: 2.50, target: restTarget.clone() };
+  const liveView = { yaw: .76, pitch: .12, range: 2.50, target: restTarget.clone() };
   let environment = 'studio';
   let colorway = 'lilac';
   let wardrobe = [defaultLeg, defaultLeg];
@@ -623,8 +623,8 @@ function createEngine({ stocking }) {
       view.pitch=.64;
       view.range=1.88*extent;
     }else{
-      view.yaw = .62;
-      view.pitch = .10;
+      view.yaw=.76;
+      view.pitch=.12;
       view.range = (pose === 'single' ? 1.95 : 2)*extent;
       view.target.copy(restTarget).multiplyScalar(extent);
     }
