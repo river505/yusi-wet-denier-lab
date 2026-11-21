@@ -382,11 +382,19 @@ export const fabricFragment = /* glsl */`
       vec2 textile=mix(legGrid,footGrid,footBlend);
       // Preserve legacy vertical stripes and bands on the shin, but
       // rotate the coordinate axes for all patterns on the foot.
+      // Net, horizontal bands and vertical pinstripes now participate
+      // in the same density system as individual printed motifs.
       bool metricMotif=pattern==1.||pattern==2.||pattern==3.||
-        pattern==7.||pattern==8.||pattern==9.||pattern==11.;
+        pattern==4.||pattern==5.||pattern==7.||
+        pattern==8.||pattern==9.||pattern==11.;
       vec2 legacyLegGrid=vec2(angle*17.,h*14.);
       vec2 motifGrid=metricMotif?textile:mix(legacyLegGrid,footGrid,footBlend);
-      float printedScale=sqrt(clamp(patternDensity,.2,2.));
+      // Density means approximately motif count per area for 2D
+      // patterns. For a 1D stripe, make the visible number of lines
+      // proportional to the requested density percentage instead.
+      float density=clamp(patternDensity,.2,2.);
+      float printedScale=(pattern==4.||pattern==5.)?
+        density:sqrt(density);
       printUV=motifGrid*(metricMotif?printedScale:1.);
     }
     float knit = (hash(floor(vec2(angle*1400.,h*1500.))) - .5) * .019;
