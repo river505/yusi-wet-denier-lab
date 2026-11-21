@@ -260,7 +260,12 @@ function makeTransform(config) {
   // Keep the heel and talus below y=.10 rigid, distributing the ankle
   // articulation into the lower shin instead of folding the calcaneus.
   const ankleStart=strongFootFlex?.105:.088;
-  const ankleEnd=strongFootFlex?.177:.155;
+  // Use a progressively broader ankle transition for high plantar flexion.
+  // On the actual 4,086-vertex leg mesh a fixed .177 endpoint can invert
+  // heel-adjacent triangles above ~70 degrees; the angle-aware band keeps
+  // its Jacobian positive even with the extra +/-35 degree pitch control.
+  const ankleEnd=strongFootFlex?Math.min(.31,
+    Math.max(.20,.19+.00078*Math.abs(ankleAngle)/radians)):.155;
   return (x, y, z) => {
     const point=[x,y,z];
     if(z>toeStart&&y<.095){
