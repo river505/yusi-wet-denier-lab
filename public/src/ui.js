@@ -917,12 +917,14 @@ export function initUI(engine) {
     applyMaterial([{...state.legs[1]}, {...state.legs[0]}]);
   });
   get('#focusToeBtn').addEventListener('click', () => {
-    engine.focusToes(state.target);
+    // Close the bottom sheet FIRST: closing restores the pre-sheet
+    // camera, so a focus performed before it would be overwritten.
     setPanel(null);
+    engine.focusToes(state.target);
   });
   get('#resetToeBtn').addEventListener('click', () => {
-    engine.resetCamera();
     setPanel(null);
+    engine.resetCamera();
   });
   function setFootPitchValue(degrees) {
     const value=clampFootPitch(degrees);
