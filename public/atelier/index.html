@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ATELIER / Human Surface Lab</title>
+<style>
+:root{color-scheme:dark;--bg:#0c131c;--panel:#141d27;--line:#293847;--txt:#f5f0e9;--muted:#a9b5bd;--accent:#dbc199}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.55 -apple-system,BlinkMacSystemFont,"Noto Sans SC","Microsoft YaHei",sans-serif}
+header{height:64px;display:flex;justify-content:space-between;align-items:center;padding:0 28px;background:#101823;border-bottom:1px solid var(--line)}
+.brand{font:23px Georgia,serif;letter-spacing:.26em;color:var(--accent)}header small{font:10px monospace;letter-spacing:.12em;color:#a7b3b9}
+main{height:calc(100dvh - 64px);min-height:600px;display:grid;grid-template-columns:minmax(0,1fr) 322px}
+#stage{position:relative;overflow:hidden;background:radial-gradient(circle at 53% 35%,#3e5060 0%,#1c2a38 47%,#0e151e 83%)}
+canvas{display:block;height:100%;width:100%;touch-action:none}
+.hero{position:absolute;left:27px;top:26px;pointer-events:none}
+.eyebrow{font:10px monospace;letter-spacing:.22em;color:var(--accent)}h1{margin:8px 0 7px;font:normal clamp(27px,3.5vw,46px) Georgia,serif}
+.hero p{margin:0;color:#c5cdd5;font-size:12px;max-width:365px}
+.badge{position:absolute;top:23px;right:23px;border:1px solid #ffffff45;background:#0b1521a8;padding:6px 10px;font:10px monospace;letter-spacing:.09em}
+.status{position:absolute;left:24px;bottom:21px;padding:9px 13px;background:#0e1824d9;border:1px solid #ffffff25;color:#c1d1dc;font:11px/1.8 monospace}
+.actions{position:absolute;right:24px;bottom:23px;display:flex;gap:7px}
+button{background:#263441;border:1px solid #485461;border-radius:7px;padding:9px 11px;color:#e8e8e5;cursor:pointer;font:12px sans-serif}
+button.active{background:#715943;border-color:#ddbb8d}button:hover{border-color:#e0c3a0}
+aside{height:100%;overflow:auto;padding:26px 24px;background:var(--panel);border-left:1px solid var(--line)}
+aside h2{font:normal 24px Georgia,serif;margin:6px 0 8px}
+.desc{font-size:12px;color:#9eacb9;margin:0 0 14px}
+.section{border-top:1px solid var(--line);padding-top:21px;margin-top:20px}
+.section h3{font:10px monospace;color:var(--accent);letter-spacing:.18em;margin:0 0 14px}
+.options{display:grid;grid-template-columns:1fr 1fr;gap:8px}.options button{padding:12px 5px}
+.colors{display:flex;gap:12px;margin:17px 0 9px}.colors button{width:30px;height:30px;padding:0;border-radius:50%;border:2px solid #e8e0d03a}
+.colors button.active{outline:2px solid var(--accent);outline-offset:2px}
+label{display:block;margin:13px 0 5px;font-size:12px;color:#d1dae0}output{float:right;font:11px monospace;color:var(--accent)}
+input[type="range"]{width:100%;margin:5px 0;accent-color:#d0af81;cursor:pointer}
+select{width:100%;background:#263441;border:1px solid #475360;color:#fff;padding:9px;border-radius:6px}
+.tech{font:10px/1.8 monospace;color:#8fa0ad}
+#loading{position:absolute;top:56%;left:50%;transform:translate(-50%,-50%);padding:13px 20px;border:1px solid #ffffff50;background:#07121bcc;font:12px monospace;color:#e5e0d7;min-width:215px;text-align:center}
+@media(max-width:790px){header{height:54px;padding:0 13px}.brand{font-size:17px}header small{font-size:8px}main{display:block;height:auto;min-height:0}#stage{height:67vh;min-height:450px}aside{height:auto;padding:23px 20px}.hero{top:15px;left:15px}.hero h1{font-size:29px}.hero p{max-width:210px}.badge{top:15px;right:11px;max-width:125px;font-size:9px}.status{bottom:10px;left:10px;font-size:9px}.actions{bottom:80px;right:10px}.actions button{font-size:11px;padding:7px}}
+</style>
+</head>
+<body>
+<header><div class="brand">ATELIER</div><small>INDEPENDENT HUMAN SURFACE & TEXTILE LAB · V0.1</small></header>
+<main><section id="stage">
+<div class="hero"><div class="eyebrow">01 / HUMAN SURFACE</div><h1>连续人体 · 织物模拟</h1><p>采用真实人体拓扑，不再截断腿部。皮肤与服装分别计算，支持局部润湿与材质调节。</p></div>
+<div class="badge">MAKEHUMAN hm08 / CC0</div>
+<div id="loading">正在载入真实人体网格…</div>
+<div class="status"><div id="assetinfo">MESH · LOADING</div><div id="performance">GPU · INITIALIZING</div><div>拖动旋转 · 滚轮缩放 · 点击施加水斑</div></div>
+<div class="actions"><button id="mode" class="active">泼水模式</button><button id="wipe">擦干</button><button id="snapshot">截图</button></div>
+</section>
+<aside>
+<div class="eyebrow">MATERIAL DESIGN WORKSPACE</div><h2>人体与织物工作台</h2>
+<p class="desc">使用独立的 WebGL 渲染实现与 CC0 人体资产。参考雨丝的分层材质思路，不直接部署雨丝原网页。</p>
+<div class="section"><h3>01 / GARMENT GEOMETRY</h3>
+<div class="options" id="outfits"><button class="active" data-outfit="tights">连裤袜 / Tights</button><button data-outfit="stockings">长袜 / Stockings</button><button data-outfit="active">运动服 / Active</button><button data-outfit="bodysuit">连体衣 / Suit</button></div>
+<div class="colors" id="palette"><button class="active" style="background:#292e38" data-color="#292e38" aria-label="黑灰色"></button><button style="background:#ae9384" data-color="#ae9384" aria-label="米棕色"></button><button style="background:#5f415d" data-color="#5f415d" aria-label="紫色"></button><button style="background:#3b6674" data-color="#3b6674" aria-label="青蓝色"></button><button style="background:#bccbbc" data-color="#bccbbc" aria-label="浅绿色"></button></div>
+<label>纱线密度<output id="denierValue">40 D</output></label><input id="denier" type="range" min="10" max="160" value="40" step="5">
+<label>布料离体间距<output id="gapValue">4 mm</output></label><input id="gap" type="range" min="2" max="12" value="4" step="1">
+</div>
+<div class="section"><h3>02 / WETNESS & BRDF</h3>
+<label>基础湿润度<output id="wetValue">12%</output></label><input id="wet" type="range" min="0" max="100" value="12" step="1">
+<label>镜面高光<output id="glossValue">70%</output></label><input id="gloss" type="range" min="0" max="100" value="70" step="1">
+<p class="desc">局部泼水使用 GPU 高斯分布，影响颜色、透明度与高光。它是光学近似，不声称已求解流体动力学。</p>
+</div>
+<div class="section"><h3>03 / BODY & INSPECTION</h3>
+<label>人体高度<output id="heightValue">175 cm</output></label><input id="height" type="range" min="155" max="190" value="175">
+<label>腰臀横向形变<output id="shapeValue">0</output></label><input id="shape" type="range" min="-100" max="100" value="0" step="5">
+<label>几何观察</label><select id="visual"><option value="all">人体 + 服装</option><option value="skin">仅人体</option><option value="wire">网格线框</option></select>
+</div>
+<div class="section tech">
+BODY · MakeHuman hm08, CC0 1.0<br>
+TOPOLOGY · CLOSED BODY / NO LEG CUTS<br>
+FABRIC · DOUBLE-SIDED CLOSED SHELL WITH HEMS<br>
+SHADING · FRESNEL / GLOSS / MICRO WEAVE<br>
+WETNESS · GPU ANALYTIC GAUSSIAN FIELD<br>
+DYNAMICS · NO XPBD YET<br>
+Licensed model attribution: MakeHuman Community. Renderer: Three.js (MIT).
+</div>
+</aside></main>
+<script type="x-shader/x-vertex" id="fabricVertex">
+varying vec3 vLocal,vNormal,vEye,vLight;
+void main(){
+vLocal=position;
+vec4 view=modelViewMatrix*vec4(position,1.);
+vNormal=normalize(normalMatrix*normal);
+vEye=normalize(-view.xyz);
+vLight=normalize((viewMatrix*vec4(3.5,5.0,4.0,0.)).xyz);
+gl_Position=projectionMatrix*view;
+}
+</script>
+<script type="x-shader/x-fragment" id="fabricFragment">
+uniform vec3 uDye;
+uniform float uDenier,uWet,uGloss;
+uniform vec4 uStains[12];
+varying vec3 vLocal,vNormal,vEye,vLight;
+void main(){
+vec3 n=normalize(vNormal);
+if(!gl_FrontFacing)n=-n;
+vec3 eye=normalize(vEye);
+vec3 light=normalize(vLight);
+vec3 halfDir=normalize(light+eye);
+float lambert=max(dot(n,light),0.);
+float wet=clamp(uWet,0.,1.);
+for(int i=0;i<12;i++){
+float d=distance(vLocal,uStains[i].xyz);
+wet=max(wet,uStains[i].w*exp(-d*d*48.));
+}
+wet=clamp(wet,0.,1.);
+float small=sin(vLocal.x*1300.)*sin(vLocal.y*1300.);
+vec3 diffuse=uDye*(.39+.69*lambert)*(1.+.055*small);
+diffuse*=mix(1.,.52,wet);
+float spec=pow(max(dot(n,halfDir),0.),mix(58.,185.,wet));
+float fresnel=pow(1.-max(dot(n,eye),0.),3.);
+vec3 color=diffuse+vec3(.88,.89,.96)*(uGloss*(.19+wet*.9)*spec+fresnel*(.08+.24*wet));
+float opacity=clamp(.15+uDenier/240.,.21,.88);
+opacity=mix(opacity,min(1.,opacity+.28),wet);
+gl_FragColor=vec4(color,opacity);
+#include <tonemapping_fragment>
+#include <colorspace_fragment>
+}
+</script>
+<script type="module">
+import * as THREE from '/vendor/three.module.js';
+const stage=document.getElementById('stage');
+const scene=new THREE.Scene();scene.background=new THREE.Color('#111b26');
+const camera=new THREE.PerspectiveCamera(37,1,.03,30);
+const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+stage.prepend(renderer.domElement);
+scene.add(new THREE.HemisphereLight('#d9e7fc','#554b4d',2.35));
+const key=new THREE.DirectionalLight('#ffe4bb',2.4);key.position.set(3,5,4);scene.add(key);
+const rim=new THREE.DirectionalLight('#b6d5ff',2.2);rim.position.set(-3,3,-2.5);scene.add(rim);
+const floor=new THREE.Mesh(new THREE.CircleGeometry(2.4,96),new THREE.MeshStandardMaterial({color:'#22303b',roughness:.91,metalness:.05}));
+floor.rotation.x=-Math.PI/2;floor.position.y=-.02;scene.add(floor);
+const grid=new THREE.GridHelper(4.3,28,0x405161,0x2b3b49);grid.position.y=-.017;scene.add(grid);
+let yaw=.30,pitch=.13,zoom=3.3,modeWet=true;
+const target=new THREE.Vector3(0,.92,0);
+function setCamera(){pitch=THREE.MathUtils.clamp(pitch,-.8,1.1);zoom=THREE.MathUtils.clamp(zoom,1.6,6);camera.position.set(zoom*Math.sin(yaw)*Math.cos(pitch),target.y+zoom*Math.sin(pitch),zoom*Math.cos(yaw)*Math.cos(pitch));camera.lookAt(target)}
+setCamera();
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+new ResizeObserver(resize).observe(stage);resize();
+const human=new THREE.Group();scene.add(human);
+let skin,garmentMeshes=[],rest,geometry,style='tights',dragged=false,lastX=0,lastY=0,startX=0,startY=0,denier=40,gap=.004,baseWet=.12,gloss=.7,color=new THREE.Color('#292e38');
+const stains=Array.from({length:12},()=>new THREE.Vector4(0,0,0,0));
+const vertexShader=document.getElementById('fabricVertex').textContent;
+const fragmentShader=document.getElementById('fabricFragment').textContent;
+function parseBody(obj){
+const vertices=[],polys=[];for(const line of obj.split('\n')){
+if(line.startsWith('v ')){const v=line.trim().split(/\s+/);vertices.push(Number(v[1]),Number(v[2]),Number(v[3]))}
+else if(line.startsWith('f ')){const f=line.slice(2).trim().split(/\s+/).map(s=>parseInt(s.split('/')[0],10)-1);for(let j=1;j<f.length-1;j++)polys.push(f[0],f[j],f[j+1])}
+}
+if(vertices.length<20000||polys.length<30000)throw Error('人体网格数据不足');
+const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));g.setIndex(polys);g.computeVertexNormals();g.computeBoundingSphere();
+return g;
+}
+function isGarmentFace(cx,cy,cz,mode){
+if(mode==='tights')return cy<1.07;
+if(mode==='stockings')return cy<.88;
+if(mode==='active')return cy<1.00||(cy>1.16&&cy<1.52);
+return cy>.32&&cy<1.52;
+}
+function makeShell(body,mode){
+const p=body.attributes.position,n=body.attributes.normal,ids=body.index.array,faces=[];
+for(let i=0;i<ids.length;i+=3){
+const a=ids[i],b=ids[i+1],c=ids[i+2];
+const y=(p.getY(a)+p.getY(b)+p.getY(c))/3;
+const x=(p.getX(a)+p.getX(b)+p.getX(c))/3;
+const z=(p.getZ(a)+p.getZ(b)+p.getZ(c))/3;
+if(isGarmentFace(x,y,z,mode))faces.push(a,b,c);
+}
+const lookup=new Map(),selected=[];
+function mapVert(i){if(!lookup.has(i)){lookup.set(i,selected.length);selected.push(i)}return lookup.get(i)}
+const front=[],edges=new Map();
+for(let i=0;i<faces.length;i+=3){
+const f=faces.slice(i,i+3).map(mapVert);front.push(...f);
+for(let k=0;k<3;k++){
+const a=f[k],b=f[(k+1)%3],e=Math.min(a,b)+','+Math.max(a,b);
+if(edges.has(e))edges.delete(e);else edges.set(e,[a,b]);
+}}
+const N=selected.length,verts=[];
+for(const j of selected)verts.push(p.getX(j)+n.getX(j)*gap,p.getY(j)+n.getY(j)*gap,p.getZ(j)+n.getZ(j)*gap);
+for(const j of selected)verts.push(p.getX(j)+n.getX(j)*(gap-.00095),p.getY(j)+n.getY(j)*(gap-.00095),p.getZ(j)+n.getZ(j)*(gap-.00095));
+const triangles=[];
+for(let i=0;i<front.length;i+=3){
+const a=front[i],b=front[i+1],c=front[i+2];triangles.push(a,b,c,c+N,b+N,a+N);
+}
+for(const [a,b] of edges.values())triangles.push(a,b,b+N,a,b+N,a+N);
+const geo=new THREE.BufferGeometry();
+geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+geo.setIndex(triangles);geo.computeVertexNormals();geo.computeBoundingSphere();
+geo.userData={boundaryEdges:edges.size,triangles:triangles.length/3};
+return geo;
+}
+function rebuildGarment(){
+for(const m of garmentMeshes){human.remove(m);m.geometry.dispose();m.material.dispose()}
+garmentMeshes=[];
+if(!geometry)return;
+const parts=style==='active'?['active']:style==='bodysuit'?['bodysuit']:[style];
+for(const part of parts){
+const clothGeo=makeShell(geometry,part);
+const material=new THREE.ShaderMaterial({uniforms:{uDye:{value:color},uDenier:{value:denier},uWet:{value:baseWet},uGloss:{value:gloss},uStains:{value:stains}},vertexShader,fragmentShader,transparent:true,depthWrite:false,side:THREE.DoubleSide});
+const cloth=new THREE.Mesh(clothGeo,material);cloth.renderOrder=2;human.add(cloth);garmentMeshes.push(cloth);
+}
+applyVisual();
+}
+function updateUniforms(){for(const m of garmentMeshes){const u=m.material.uniforms;u.uDye.value=color;u.uDenier.value=denier;u.uWet.value=baseWet;u.uGloss.value=gloss;u.uStains.value=stains}}
+function applyVisual(){
+if(!skin)return;
+const v=document.getElementById('visual').value;
+skin.material.wireframe=v==='wire';
+skin.material.color.set(v==='wire'?'#bccbce':'#bba796');
+garmentMeshes.forEach(m=>m.visible=v==='all');
+}
+async function init(){
+try{
+const response=await fetch('/atelier/assets/human_body_hm08.obj');if(!response.ok)throw Error('asset HTTP '+response.status);
+geometry=parseBody(await response.text());
+const count=geometry.attributes.position.count,faces=geometry.index.count/3;
+const tally=new Map(),ind=geometry.index.array;
+for(let i=0;i<ind.length;i+=3){for(let k=0;k<3;k++){const a=ind[i+k],b=ind[i+(k+1)%3],key=Math.min(a,b)+':'+Math.max(a,b);tally.set(key,(tally.get(key)||0)+1)}}
+const boundary=[...tally.values()].filter(x=>x===1).length;
+skin=new THREE.Mesh(geometry,new THREE.MeshPhysicalMaterial({color:'#bba796',roughness:.78,metalness:0,side:THREE.DoubleSide}));
+human.add(skin);
+rest=new Float32Array(geometry.attributes.position.array);
+rebuildGarment();
+document.getElementById('assetinfo').textContent='MESH · '+count.toLocaleString()+' V / '+faces.toLocaleString()+' T / '+boundary+' OPEN EDGES';
+document.getElementById('loading').remove();
+}catch(err){document.getElementById('loading').textContent='载入失败 · '+err.message;console.error(err)}
+}
+function updateShape(v){
+if(!geometry||!rest)return;
+const pos=geometry.attributes.position.array;
+for(let i=0;i<pos.length;i+=3){
+const y=rest[i+1],w=Math.exp(-Math.pow((y-1.08)/.28,2)),f=1+Number(v)*.0013*w;
+pos[i]=rest[i]*f;pos[i+1]=y;pos[i+2]=rest[i+2]*f;
+}
+geometry.attributes.position.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
+rebuildGarment();
+}
+function bind(id,fn){const e=document.getElementById(id);e.addEventListener('input',()=>fn(e.value));fn(e.value)}
+bind('denier',v=>{denier=Number(v);document.getElementById('denierValue').textContent=v+' D';updateUniforms()});
+bind('gap',v=>{gap=Number(v)/1000;document.getElementById('gapValue').textContent=v+' mm';rebuildGarment()});
+bind('wet',v=>{baseWet=Number(v)/100;document.getElementById('wetValue').textContent=v+'%';updateUniforms()});
+bind('gloss',v=>{gloss=Number(v)/100;document.getElementById('glossValue').textContent=v+'%';updateUniforms()});
+bind('height',v=>{human.scale.y=Number(v)/175;document.getElementById('heightValue').textContent=v+' cm'});
+bind('shape',v=>{document.getElementById('shapeValue').textContent=v;updateShape(v)});
+document.getElementById('outfits').addEventListener('click',e=>{const b=e.target.closest('button[data-outfit]');if(!b)return;style=b.dataset.outfit;document.querySelectorAll('#outfits button').forEach(c=>c.classList.toggle('active',c===b));rebuildGarment()});
+document.getElementById('palette').addEventListener('click',e=>{const b=e.target.closest('button[data-color]');if(!b)return;color=new THREE.Color(b.dataset.color);document.querySelectorAll('#palette button').forEach(c=>c.classList.toggle('active',c===b));updateUniforms()});
+document.getElementById('visual').addEventListener('change',applyVisual);
+document.getElementById('mode').onclick=e=>{modeWet=!modeWet;e.target.classList.toggle('active',modeWet);e.target.textContent=modeWet?'泼水模式':'观察模式'};
+document.getElementById('wipe').onclick=()=>{stains.forEach(s=>s.set(0,0,0,0));updateUniforms()};
+document.getElementById('snapshot').onclick=()=>{renderer.render(scene,camera);const a=document.createElement('a');a.download='atelier-surface-v01.png';a.href=renderer.domElement.toDataURL('image/png');a.click()};
+const pointer=renderer.domElement;
+pointer.addEventListener('pointerdown',e=>{lastX=startX=e.clientX;lastY=startY=e.clientY;dragged=false;pointer.setPointerCapture(e.pointerId)});
+pointer.addEventListener('pointermove',e=>{if(!pointer.hasPointerCapture(e.pointerId))return;const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;if(Math.hypot(e.clientX-startX,e.clientY-startY)>5)dragged=true;if(dragged){yaw-=dx*.006;pitch+=dy*.005;setCamera()}});
+pointer.addEventListener('wheel',e=>{e.preventDefault();zoom*=Math.exp(e.deltaY*.001);setCamera()},{passive:false});
+const ray=new THREE.Raycaster();const m=new THREE.Vector2();
+pointer.addEventListener('pointerup',e=>{
+if(dragged||!modeWet||!skin)return;
+const b=pointer.getBoundingClientRect();
+m.set((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1);
+ray.setFromCamera(m,camera);
+const hit=ray.intersectObject(skin,false)[0];if(!hit)return;
+const local=human.worldToLocal(hit.point.clone());stains.shift();stains.push(new THREE.Vector4(local.x,local.y,local.z,.98));updateUniforms();
+});
+let frames=0,last=performance.now();
+function frame(now){requestAnimationFrame(frame);frames++;if(now-last>900){document.getElementById('performance').textContent='GPU · '+(frames*1000/(now-last)).toFixed(0)+' FPS';frames=0;last=now}renderer.render(scene,camera)}
+init();requestAnimationFrame(frame);
+</script>
+</body></html>
