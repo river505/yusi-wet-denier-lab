@@ -365,25 +365,30 @@ export const fabricFragment = /* glsl */`
     skin*=skinTint*skinLightness;
     float h = localPoint.y;
     float angle = atan(localPoint.x+.006,localPoint.z-.030) / 6.2831853 + .5;
-    // Calves are longitudinal Y cylinders; feet are longitudinal Z
-    // cylinders. Never use atan(x,z) on the foot: it converges at the
-    // heel and turns every heart/stripe/net into radial spokes.
-    float legRadius=mix(.046,.071,smoothstep(.15,.81,h));
-    vec2 legGrid=vec2(angle*6.2831853*legRadius*32.,h*32.);
-    float footAngle=atan(localPoint.y-.045,localPoint.x+.004)/6.2831853+.5;
-    float footRadius=mix(.038,.050,smoothstep(-.08,.16,localPoint.z));
-    vec2 footGrid=vec2(footAngle*6.2831853*footRadius*32.,
-                       (localPoint.z+.115)*32.);
-    float footBlend=1.-smoothstep(.105,.165,h);
-    vec2 textile=mix(legGrid,footGrid,footBlend);
-    // Preserve legacy vertical stripes and bands on the shin, but use
-    // the correct longitudinal axis for ALL patterns on the foot.
-    bool metricMotif=pattern==1.||pattern==2.||pattern==3.||
-      pattern==7.||pattern==8.||pattern==9.||pattern==11.;
-    vec2 legacyLegGrid=vec2(angle*17.,h*14.);
-    vec2 motifGrid=metricMotif?textile:mix(legacyLegGrid,footGrid,footBlend);
-    float printedScale=sqrt(clamp(patternDensity,.2,2.));
-    vec2 printUV=motifGrid*(metricMotif?printedScale:1.);
+    vec2 printUV=vec2(0.);
+    // Uniform branch: plain 40D fabric does not pay for a second atan
+    // and texture projection. Mobile GPUs keep the original fast path.
+    if(pattern>0.||secret>0.){
+      // Calves are longitudinal Y cylinders; feet are longitudinal Z
+      // cylinders. Never use atan(x,z) on the foot: it converges at the
+      // heel and turns every heart/stripe/net into radial spokes.
+      float legRadius=mix(.046,.071,smoothstep(.15,.81,h));
+      vec2 legGrid=vec2(angle*6.2831853*legRadius*32.,h*32.);
+      float footAngle=atan(localPoint.y-.045,localPoint.x+.004)/6.2831853+.5;
+      float footRadius=mix(.038,.050,smoothstep(-.08,.16,localPoint.z));
+      vec2 footGrid=vec2(footAngle*6.2831853*footRadius*32.,
+                         (localPoint.z+.115)*32.);
+      float footBlend=1.-smoothstep(.105,.165,h);
+      vec2 textile=mix(legGrid,footGrid,footBlend);
+      // Preserve legacy vertical stripes and bands on the shin, but
+      // rotate the coordinate axes for all patterns on the foot.
+      bool metricMotif=pattern==1.||pattern==2.||pattern==3.||
+        pattern==7.||pattern==8.||pattern==9.||pattern==11.;
+      vec2 legacyLegGrid=vec2(angle*17.,h*14.);
+      vec2 motifGrid=metricMotif?textile:mix(legacyLegGrid,footGrid,footBlend);
+      float printedScale=sqrt(clamp(patternDensity,.2,2.));
+      printUV=motifGrid*(metricMotif?printedScale:1.);
+    }
     float knit = (hash(floor(vec2(angle*1400.,h*1500.))) - .5) * .019;
     float shine = pow(max(0.,dot(n,normalize(light+view))),mix(25.,85.,step(1.5,fabric)));
     float stocking = step(h, lengthLimit + (cuff == 1. ? .0048 * (.5+.5*cos(angle*125.6637)) : 0.));
