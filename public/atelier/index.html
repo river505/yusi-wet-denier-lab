@@ -17,7 +17,7 @@ canvas{display:block;height:100%;width:100%;touch-action:none}
 .hero p{margin:0;color:#c5cdd5;font-size:12px;max-width:365px}
 .badge{position:absolute;top:23px;right:23px;border:1px solid #ffffff45;background:#0b1521a8;padding:6px 10px;font:10px monospace;letter-spacing:.09em}
 .status{position:absolute;left:24px;bottom:21px;padding:9px 13px;background:#0e1824d9;border:1px solid #ffffff25;color:#c1d1dc;font:11px/1.8 monospace}
-.actions{position:absolute;right:24px;bottom:23px;display:flex;gap:7px}
+.actions{position:absolute;right:24px;bottom:23px;display:flex;gap:7px;max-width:calc(100% - 26px);flex-wrap:wrap;justify-content:flex-end}
 button{background:#263441;border:1px solid #485461;border-radius:7px;padding:9px 11px;color:#e8e8e5;cursor:pointer;font:12px sans-serif}
 button.active{background:#715943;border-color:#ddbb8d}button:hover{border-color:#e0c3a0}
 aside{height:100%;overflow:auto;padding:26px 24px;background:var(--panel);border-left:1px solid var(--line)}
@@ -126,6 +126,13 @@ const camera=new THREE.PerspectiveCamera(37,1,.03,30);
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});
 renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+// No time-dependent physics yet: coalesce invalidations into a single GPU draw.
+let scheduledFrame=false;
+function requestDraw(){if(scheduledFrame)return;scheduledFrame=true;requestAnimationFrame(()=>{
+  scheduledFrame=false;renderer.render(scene,camera);
+  const perf=document.getElementById('performance');
+  if(perf)perf.textContent='GPU · ON-DEMAND RENDER / WORLD-LOCKED';
+});}
 stage.prepend(renderer.domElement);
 scene.add(new THREE.HemisphereLight('#d9e7fc','#554b4d',2.35));
 const key=new THREE.DirectionalLight('#ffe4bb',2.4);key.position.set(3,5,4);scene.add(key);
@@ -183,9 +190,9 @@ originMarker.rotation.x=-Math.PI/2;originMarker.position.y=-.008;environment.add
 let yaw=.0,pitch=.08,zoom=3.1,modeWet=true;
 const target=new THREE.Vector3(0,.92,0);
 const modelReference={center:new THREE.Vector3(),ground:0,height:1.75};
-function setCamera(){pitch=THREE.MathUtils.clamp(pitch,-.8,1.1);zoom=THREE.MathUtils.clamp(zoom,1.6,6);camera.position.set(zoom*Math.sin(yaw)*Math.cos(pitch),target.y+zoom*Math.sin(pitch),zoom*Math.cos(yaw)*Math.cos(pitch));camera.lookAt(target)}
+function setCamera(){pitch=THREE.MathUtils.clamp(pitch,-.8,1.1);zoom=THREE.MathUtils.clamp(zoom,1.6,6);camera.position.set(zoom*Math.sin(yaw)*Math.cos(pitch),target.y+zoom*Math.sin(pitch),zoom*Math.cos(yaw)*Math.cos(pitch));camera.lookAt(target);requestDraw()}
 setCamera();
-function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();requestDraw()}
 new ResizeObserver(resize).observe(stage);resize();
 const human=new THREE.Group();scene.add(human);
 let skin,garmentMeshes=[],rest,geometry,style='tights',dragged=false,lastX=0,lastY=0,startX=0,startY=0,denier=40,gap=.004,baseWet=.12,gloss=.7,color=new THREE.Color('#292e38');
@@ -232,7 +239,7 @@ const triangles=[];
 for(let i=0;i<front.length;i+=3){
 const a=front[i],b=front[i+1],c=front[i+2];triangles.push(a,b,c,c+N,b+N,a+N);
 }
-for(const [a,b] of edges.values())triangles.push(a,b,b+N,a,b+N,a+N);
+for(const [a,b] of edges.values())triangles.push(b,a,a+N,b,a+N,b+N);
 const geo=new THREE.BufferGeometry();
 geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
 geo.setIndex(triangles);geo.computeVertexNormals();geo.computeBoundingSphere();
@@ -251,13 +258,13 @@ const cloth=new THREE.Mesh(clothGeo,material);cloth.renderOrder=2;human.add(clot
 }
 applyVisual();
 }
-function updateUniforms(){for(const m of garmentMeshes){const u=m.material.uniforms;u.uDye.value=color;u.uDenier.value=denier;u.uWet.value=baseWet;u.uGloss.value=gloss;u.uStains.value=stains}}
+function updateUniforms(){for(const m of garmentMeshes){const u=m.material.uniforms;u.uDye.value=color;u.uDenier.value=denier;u.uWet.value=baseWet;u.uGloss.value=gloss;u.uStains.value=stains}requestDraw()}
 function applyVisual(){
 if(!skin)return;
 const v=document.getElementById('visual').value;
 skin.material.wireframe=v==='wire';
 skin.material.color.set(v==='wire'?'#bccbce':'#bba796');
-garmentMeshes.forEach(m=>m.visible=v==='all');
+garmentMeshes.forEach(m=>m.visible=v==='all');requestDraw();
 }
 async function init(){
 try{
@@ -299,7 +306,7 @@ bind('denier',v=>{denier=Number(v);document.getElementById('denierValue').textCo
 bind('gap',v=>{gap=Number(v)/1000;document.getElementById('gapValue').textContent=v+' mm';rebuildGarment()});
 bind('wet',v=>{baseWet=Number(v)/100;document.getElementById('wetValue').textContent=v+'%';updateUniforms()});
 bind('gloss',v=>{gloss=Number(v)/100;document.getElementById('glossValue').textContent=v+'%';updateUniforms()});
-bind('height',v=>{human.scale.y=Number(v)/175;document.getElementById('heightValue').textContent=v+' cm'});
+bind('height',v=>{human.scale.y=Number(v)/175;document.getElementById('heightValue').textContent=v+' cm';requestDraw()});
 bind('shape',v=>{document.getElementById('shapeValue').textContent=v;updateShape(v)});
 document.getElementById('outfits').addEventListener('click',e=>{const b=e.target.closest('button[data-outfit]');if(!b)return;style=b.dataset.outfit;document.querySelectorAll('#outfits button').forEach(c=>c.classList.toggle('active',c===b));rebuildGarment()});
 document.getElementById('palette').addEventListener('click',e=>{const b=e.target.closest('button[data-color]');if(!b)return;color=new THREE.Color(b.dataset.color);document.querySelectorAll('#palette button').forEach(c=>c.classList.toggle('active',c===b));updateUniforms()});
@@ -323,8 +330,6 @@ ray.setFromCamera(m,camera);
 const hit=ray.intersectObject(skin,false)[0];if(!hit)return;
 const local=human.worldToLocal(hit.point.clone());stains.shift();stains.push(new THREE.Vector4(local.x,local.y,local.z,.98));updateUniforms();
 });
-let frames=0,last=performance.now();
-function frame(now){requestAnimationFrame(frame);frames++;if(now-last>900){document.getElementById('performance').textContent='GPU · '+(frames*1000/(now-last)).toFixed(0)+' FPS';frames=0;last=now}renderer.render(scene,camera)}
-init();requestAnimationFrame(frame);
+init();requestDraw();
 </script>
 </body></html>
