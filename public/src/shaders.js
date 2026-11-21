@@ -169,7 +169,8 @@ export const skinVertex = /* glsl */`
     vec4 viewPoint = modelViewMatrix * vec4(position, 1.);
     surfaceNormal = normalize(normalMatrix * normal);
     eyeDirection = -viewPoint.xyz;
-    gl_Position = projectionMatrix * viewPoint;
+    // Recess the full-length skin proxy by 0.9 mm beneath the garment mesh.
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position - normal * .0009, 1.);
   }
 `;
 
