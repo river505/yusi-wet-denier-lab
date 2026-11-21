@@ -3,6 +3,16 @@
 export function createSpatialEnvironment(T, world) {
   const root = new T.Group();
   world.add(root);
+  // The source demo renders most surfaces with unlit GLSL; the new physical
+  // stages require actual Three.js lights or every floor/wall turns black.
+  const ambience=new T.HemisphereLight('#e8f1ff','#817b7b',2.35);
+  world.add(ambience);
+  const keyLight=new T.DirectionalLight('#fff3de',2.4);
+  keyLight.position.set(2.6,4.6,3.8);
+  world.add(keyLight);
+  const fillLight=new T.DirectionalLight('#c6dfff',.95);
+  fillLight.position.set(-3.5,2.5,-2.5);
+  world.add(fillLight);
   const groups = Object.fromEntries(['studio','bath','street','pool'].map(n=>[n,new T.Group()]));
   Object.values(groups).forEach(g=>root.add(g));
   const color = s=>new T.Color(s);
