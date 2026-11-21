@@ -361,6 +361,7 @@ function createEngine({ stocking }) {
   let motionClock = 0, lastMotionUpdate = -Infinity;
   let motionPlaying = true, motionSpeed = 1, motionAmplitude = 1;
   const footPitch = [0,0]; // Per-leg ankle pitch in degrees, applies to every pose.
+  let legSpacing = 1; // Distance between bilateral hip origins, relative to pose default.
   const motionHz = {kick:.85,walk:1.18,run:1.85,sitBounce:2.5,sitCrossKick:1.05};
   let width = 1;
   let height = 1;
@@ -431,7 +432,9 @@ function createEngine({ stocking }) {
     models.forEach(({ group, skinMesh, cloth, reflection, contact }, index) => {
       applyPose(skinMesh.geometry,stocking,pose,index,phase,motionAmplitude,footPitch);
       const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase,motionAmplitude,footPitch);
-      group.position.set(x,y,z);
+      // Preserve anatomical hip pivots: adjust only bilateral placement,
+      // not leg geometry or the knee/ankle transforms.
+      group.position.set(x*legSpacing,y,z);
       group.visible=visible;
       group.updateMatrixWorld(true);
       // Contact follows the posed foot, and is suppressed while airborne.
@@ -884,6 +887,20 @@ function createEngine({ stocking }) {
 
   return {
     setScene, setSkinAppearance, setMaterial, setPose, zoom, orbit, resetCamera, focusToes, bucket, dry, photo, thumbnail,
+    setLegSpacing(percent) {
+      const next=THREE.MathUtils.clamp((Number(percent)||100)/100,.75,1.55);
+      if(Math.abs(next-legSpacing)<.001)return;
+      legSpacing=next;
+      placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
+      if(!isMotionPose(pose)&&!isLyingPose(pose)&&!isSeatedPose(pose)){
+        const old=shadowCache.get(pose);
+        const fresh=bakeFloorShadow(models);
+        shadowCache.set(pose,fresh);
+        floorShade.material.map=fresh;
+        floorShade.material.needsUpdate=true;
+        if(old&&old!==fresh)old.dispose();
+      }
+    },
     setFootPitch(values) {
       const next = [0,1].map(i=>THREE.MathUtils.clamp(Number(values?.[i]) || 0,-35,35));
       if(next.every((v,i)=>Math.abs(v-footPitch[i])<.001))return;
