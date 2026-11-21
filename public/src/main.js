@@ -254,7 +254,9 @@ function createEngine({ stocking }) {
     // The skin shader recesses its vertices slightly so cloth stays outside and anti-z-fights.
     const skinMesh = new THREE.Mesh(stocking.clone(), new THREE.ShaderMaterial({
       vertexShader: skinVertex, fragmentShader: skinFragment,
-      side: THREE.DoubleSide, depthWrite: true,
+      // Skin opacity must actually blend with the room; otherwise the
+      // GLSL alpha gradient still writes an opaque cut edge into the depth buffer.
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
     }));
     skinMesh.renderOrder = 0;
     group.add(skinMesh);
