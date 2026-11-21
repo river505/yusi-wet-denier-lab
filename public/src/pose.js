@@ -23,6 +23,7 @@ const poses = {
   bendTiptoe: [{ x:.095 }, { x:.095 }],
   tiptoeShake: [{ x:.090 }, { x:.090 }],
   bendTiptoeShake: [{ x:.095 }, { x:.095 }],
+  pigeonTiptoeShake: [{ x:.095 }, { x:.095 }],
   // A seat height of 0.57 m gives a hip at y~0.57 and bent legs below it.
   sitNatural: [{ x:.095, pitch:-79, knee:84, yaw:7, roll:-2, shiftY:-.32 },
     { x:.095, pitch:-81, knee:86, yaw:6, roll:2, shiftY:-.32 }],
@@ -53,7 +54,7 @@ const poses = {
   lieSideRight: [{x:.095,pitch:-97,knee:20,roll:-65,yaw:-5,shiftY:-.68},
     {x:.095,pitch:-92,knee:7,roll:-65,yaw:-8,shiftY:-.77}],
 };
-const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick','tiptoeShake','bendTiptoeShake']);
+const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick','tiptoeShake','bendTiptoeShake','pigeonTiptoeShake']);
 const lyingNames=new Set(['lieFlat','lieBent','lieCrossLeft','lieCrossRight','lieSideLeft','lieSideRight','lieSpread']);
 const seatedNames=new Set(['sitNatural','sitReach','sitCross','sitBounce','sitCrossKick']);
 const standingBendNames=new Set(['bendForward','bendTiptoe']);
@@ -83,16 +84,22 @@ function motionConfigs(name, phase, amplitude=1) {
   const opposite=Math.sin(theta+Math.PI);
   const bend=v=>Math.max(0,v);
   const seated=poses.sitNatural;
-  if(name==='tiptoeShake'||name==='bendTiptoeShake') {
+  if(name==='tiptoeShake'||name==='bendTiptoeShake'||name==='pigeonTiptoeShake') {
     const bent=name==='bendTiptoeShake';
-    const neutral=bent?standingBendConfigs('bendTiptoe',amp):poses.tiptoe;
+    const inward=name==='pigeonTiptoeShake';
+    // Preserve the existing pigeon-toed hip/knee yaw and roll; the heel
+    // lift is added in place, rather than twisting the feet outward.
+    const neutral=bent?standingBendConfigs('bendTiptoe',amp):
+      inward?poses.pigeon.map((cfg,i)=>({...cfg,heel:i===0?38:35})):
+      poses.tiptoe;
     return neutral.map((cfg,i)=>{
       const tremor=Math.sin(theta+(i===0?0:.35));
+      const knee=(cfg.knee||0)+(bent?8:inward?6.5:5)*amp*tremor;
       return {...cfg,
-        pitch:(cfg.pitch||0)-(bent?2.7:1.8)*amp*tremor,
-        knee:(cfg.knee||0)+(bent?8:5)*amp*tremor,
-        // Foot and toe position is subsequently corrected by an explicit
-        // world-space contact anchor, never by rotating the whole ankle.
+        pitch:(cfg.pitch||0)-(bent?2.7:inward?2.1:1.8)*amp*tremor,
+        knee:inward?Math.max(3,knee):knee,
+        // Contact is corrected at the toe after joint deformation;
+        // the horizontal anchor is deliberately allowed a tiny sway.
       };
     });
   }
@@ -257,24 +264,30 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1, footPitch=[0
   // its sole planted; the swing leg rotates about the anatomical hip,
   // not its own lowest moving foot vertex.
   const supportHeight = footLevel - soleHeight(vertices, second);
-  const toeFixed=name==='tiptoeShake'||name==='bendTiptoeShake';
-  const reference=toeFixed?motionConfigs(name,0,amplitude):null;
+  const toeSupported=name==='tiptoeShake'||name==='bendTiptoeShake'
+    ||name==='pigeonTiptoeShake';
+  const reference=toeSupported?motionConfigs(name,0,amplitude):null;
   const toeContact=[0,.022,.185];
   const result = [first, second].map((transform, leg) => {
     let x=configs[leg].x*(leg===0?1:-1);
     let y=Number.isFinite(configs[leg].shiftY)?configs[leg].shiftY:
       name==='kick'?supportHeight:footLevel-soleHeight(vertices,transform)+(configs[leg].lift||0);
     let z=configs[leg].z??0;
-    if(toeFixed){
+    if(toeSupported){
       const referenceTransform=makeTransform({...reference[leg],followShin:false,
         ankle:(reference[leg].ankle||0)+(Number(footPitch[leg])||0)});
       const currentToe=transform(...toeContact);
       const initialToe=referenceTransform(...toeContact);
-      x+=initialToe[0]-currentToe[0];
-      y+=initialToe[1]-currentToe[1]+soleHeight(vertices,transform)-soleHeight(vertices,referenceTransform);
-      z+=initialToe[2]-currentToe[2];
-      // Preserve the same toe world-height across all frames. In particular,
-      // never recenter on the heel, which must be free to bounce.
+      // The metatarsal/toe remains at the exact reference ground height.
+      // Allow a bounded, zero-drift horizontal sway (2-4mm at 100%).
+      // Zero displacement at phase=0 also avoids pops when selecting poses.
+      const theta=frameIndex/FRAME_COUNT*2*Math.PI;
+      const phase=leg*.47;
+      const swayX=amplitude*.0016*(Math.sin(theta+phase)-Math.sin(phase));
+      const swayZ=amplitude*.0021*(Math.sin(theta+phase*.7)-Math.sin(phase*.7));
+      x+=initialToe[0]-currentToe[0]+swayX;
+      z+=initialToe[2]-currentToe[2]+swayZ;
+      // Do not permit vertical jitter: heels may move, toes remain grounded.
       y=footLevel-soleHeight(vertices,referenceTransform)+initialToe[1]-currentToe[1];
     }
     return {transform,x,y,z,visible:name!=='single'||leg===0};
