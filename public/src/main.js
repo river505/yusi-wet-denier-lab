@@ -1,6 +1,6 @@
 import * as THREE from '../vendor/three.module.js';
 import { loadMesh } from './mesh.js';
-import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragment, skinVertex, stageFragment, stageVertex } from './shaders.js';
+import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragment, skinVertex, stageFragment, stageVertex, panoramaVertex } from './shaders.js';
 import { initUI } from './ui.js';
 import { applyPose } from './pose.js';
 
@@ -203,10 +203,35 @@ function createEngine({ stocking, skin }) {
     depthTest: false,
     depthWrite: false,
   });
+  // Retain a screen-space gradient for neutral studio mode.
   const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), backdropMaterial);
   backdrop.frustumCulled = false;
   backdrop.renderOrder = -10;
   world.add(backdrop);
+  // Scenic modes live in a stationary panoramic shell, so camera orbit
+  // changes the observed environment as well as the garment silhouette.
+  // These are illustrated panoramas, not geometrically reconstructed rooms.
+  const panoramaMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      upper: backdropMaterial.uniforms.upper,
+      lower: backdropMaterial.uniforms.lower,
+      kind: backdropMaterial.uniforms.kind,
+      time: backdropMaterial.uniforms.time,
+      aspect: { value: 1.6 },
+    },
+    vertexShader: panoramaVertex,
+    fragmentShader: stageFragment,
+    side: THREE.BackSide,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const panorama = new THREE.Mesh(new THREE.SphereGeometry(8, 96, 48), panoramaMaterial);
+  panorama.position.copy(restTarget);
+  panorama.rotation.y = -0.62;
+  panorama.renderOrder = -10;
+  panorama.frustumCulled = false;
+  panorama.visible = false;
+  world.add(panorama);
 
   const contactTexture = radialShadow();
   const shadowGeometry = new THREE.PlaneGeometry(.31, .56);
@@ -282,7 +307,7 @@ function createEngine({ stocking, skin }) {
   let width = 1;
   let height = 1;
   let projectionLeft = 0;
-  let sheetShift = 0;
+  let verticalProjectionOffset = 0;
   let lastTime = performance.now();
   let lastInput = lastTime;
 
@@ -298,6 +323,8 @@ function createEngine({ stocking, skin }) {
     settings.lower.value.set(colors[1]);
     if (customColor && environment === 'studio') settings.lower.value.copy(settings.upper.value).multiplyScalar(.79);
     settings.kind.value = Math.max(0, sceneKeys.indexOf(environment));
+    backdrop.visible = environment === 'studio';
+    panorama.visible = !backdrop.visible;
     const tint = environment === 'street' ? '#c1afd2' : '#ffffff';
     const reflectAmount = { bath: .22, street: .28, pool: .12 }[environment] ?? 0;
     models.forEach(({ group, cloth, reflection }) => {
@@ -382,19 +409,32 @@ function createEngine({ stocking, skin }) {
     liveView.range += (view.range - liveView.range) * follow;
     liveView.target.lerp(view.target, follow);
     orient(camera, liveView);
-    const cssX = getComputedStyle(document.documentElement).getPropertyValue('--stage-x');
+    const rect = canvas.getBoundingClientRect();
     const isWide = document.body.classList.contains('wide');
-    const rightShift = isWide && cssX.includes('px') ? width / 2 - parseFloat(cssX) : 0;
-    const sheetOpen = !isWide && document.body.classList.contains('sheet-open') ? 1 : 0;
-    projectionLeft += (rightShift - projectionLeft) * follow;
-    sheetShift += (sheetOpen - sheetShift) * follow;
-    if (sheetShift > .005) {
-      const factor = 1 + .75 * sheetShift;
-      const virtualWidth = width / factor;
-      camera.setViewOffset(virtualWidth, height / factor, -(width - virtualWidth) / 2, -height * .03 * sheetShift, width, height);
-    } else if (Math.abs(projectionLeft) > .1) {
-      camera.setViewOffset(width, height, projectionLeft, 0, width, height);
-    } else if (camera.view?.enabled) camera.clearViewOffset();
+    const cssX = getComputedStyle(document.documentElement).getPropertyValue('--stage-x');
+    const stageCenterX = isWide && Number.isFinite(parseFloat(cssX))
+      ? parseFloat(cssX) - rect.left : width * .5;
+    // Project around the visible canvas, not the full window; do not change zoom.
+    const desiredX = THREE.MathUtils.clamp(stageCenterX, width * .18, width * .82);
+    const horizontalOffset = width * .5 - desiredX;
+    projectionLeft += (horizontalOffset - projectionLeft) * follow;
+
+    const sheetOpen = !isWide && document.body.classList.contains('sheet-open');
+    let verticalOffset = 0;
+    if (sheetOpen) {
+      const visibleSheet = document.body.classList.contains('mat-open')
+        ? document.getElementById('materials')
+        : document.getElementById('scenes');
+      const sheetTop = visibleSheet?.getBoundingClientRect().top ?? rect.bottom;
+      const visibleHeight = Math.max(height * .35, Math.min(rect.bottom, sheetTop) - rect.top);
+      verticalOffset = height * .5 - visibleHeight * .51;
+    }
+    verticalProjectionOffset += (verticalOffset - verticalProjectionOffset) * follow;
+    if (Math.abs(projectionLeft) > .05 || Math.abs(verticalProjectionOffset) > .05) {
+      camera.setViewOffset(width, height, projectionLeft, verticalProjectionOffset, width, height);
+    } else if (camera.view?.enabled) {
+      camera.clearViewOffset();
+    }
   }
 
   function markWet(mesh, point, radius) {
