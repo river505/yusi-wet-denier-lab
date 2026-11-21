@@ -88,10 +88,11 @@ export function createSpatialEnvironment(T, world) {
     if(kind==='studio')return new T.MeshStandardMaterial({color:'#eee9f0',roughness:.94,metalness:0,side:T.DoubleSide});
     return new T.MeshStandardMaterial({map:tileTexture(kind),roughness:kind==='street'?.36:kind==='bath'?.75:.85,metalness:kind==='street'?.07:0,side:T.DoubleSide});
   }
-  plane(groups.studio,20,20,floorMat('studio'));
-  const studioDisc=new T.Mesh(new T.CircleGeometry(1.45,100),new T.MeshBasicMaterial({color:'#e0d7e5',transparent:true,opacity:.25,depthWrite:false}));
-  studioDisc.rotation.x=-Math.PI/2;studioDisc.position.set(0,-.01,0);groups.studio.add(studioDisc);
-  groundSurfaces.add(studioDisc);
+  // Original WET DENIER LAB uses a seamless paper cyclorama. A real
+  // 20m horizontal ground plane caused an obvious horizon and colour
+  // discontinuity in the portrait viewport. Foot shadows are rendered
+  // separately by the main engine, so studio floor geometry is omitted.
+  // Bath/street/pool retain their world-space tiled floors.
   const bath=groups.bath;
   plane(bath,15,15,floorMat('bath'));
   const wallTexture=tileTexture('bath');wallTexture.repeat.set(7,3);
@@ -187,9 +188,11 @@ export function createSpatialEnvironment(T, world) {
     const [fogColor,fogDensity]=fogSettings[active];
     // Preserve the lighter illustrated studio/bath palette; only the neon
     // street switches to subdued ambient lighting.
-    ambience.intensity=active==='street'?1.10:2.2;
-    keyLight.intensity=active==='street'?1.10:2.25;
-    fillLight.intensity=active==='street'?.60:.90;
+    // Directional scene shadows and bevels need a meaningful key/fill
+    // contrast. Too much hemisphere floodlight flattens the architecture.
+    ambience.intensity=active==='street'?1.10:1.46;
+    keyLight.intensity=active==='street'?1.38:2.45;
+    fillLight.intensity=active==='street'?.60:.72;
     if(!world.fog)world.fog=new T.FogExp2(fogColor,fogDensity);
     world.fog.color.set(fogColor);
     world.fog.density=fogDensity;
