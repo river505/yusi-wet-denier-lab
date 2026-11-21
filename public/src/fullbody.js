@@ -418,17 +418,25 @@ function updateRootPose(){
   model.position.set(0,0,0);
   model.scale.setScalar(num(state.figure.height,150,185)/165);
   if(lie){
-    model.rotation.x=-Math.PI/2;
-    model.rotation.z=pose==='lieSideLeft'?.16:pose==='lieSideRight'?-.16:0;
-    model.position.y=.13;
-    orbit.target.set(0,.17,-.74);
+    // Lie back with the face looking upward. Side-lying adds an actual
+    // ~75-degree body roll around the now-horizontal longitudinal axis.
+    const qLie=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
+    const side=pose==='lieSideLeft'?1:pose==='lieSideRight'?-1:0;
+    const qRoll=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,-1),side*1.31);
+    model.quaternion.copy(qRoll.multiply(qLie));
+    model.position.y=side?.255:.13;
+    orbit.target.set(0,side?.255:.17,-.74);
     orbit.pitch=.56;
     orbit.distance=3.4;
   }else if(pose.startsWith('sit')){
     model.position.y=-.40;
     orbit.target.set(0,.72,0);
+    orbit.pitch=.18;
+    orbit.distance=3.5;
   }else{
     orbit.target.set(0,.89,0);
+    orbit.pitch=.12;
+    orbit.distance=3.7;
   }
   needPose=true;
 }
@@ -540,8 +548,10 @@ $('fbControls').addEventListener('input',e=>{
     if(group==='hair')buildHair();
     else if(group==='figure'){
       if(key==='height')model.scale.setScalar(num(state.figure.height,150,185)/165);
-      refreshShape();
-    }else if(group==='face')refreshShape();
+      // Defer 19k-vertex sculpt work to the next animation frame. Multiple
+      // input events in one frame collapse into a single mesh rebuild.
+      needShape=true;
+    }else if(group==='face')needShape=true;
   }else if(el.dataset.field){
     const key=el.dataset.field;
     const value=key==='stockings'?(el.value==='true'):
