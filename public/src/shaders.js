@@ -178,6 +178,30 @@ export const skinVertex = /* glsl */`
 `;
 
 export const skinFragment = /* glsl */`
+  // Toe detail is anchored to the original GLB's dorsal foot coordinates.
+  // Recessed grooves and restrained nail highlights supplement the existing
+  // five-toe geometry, without placing floating stickers on the feet.
+  float toeGrooves(vec3 p) {
+    float dorsal = smoothstep(.014,.027,p.y) * (1.-smoothstep(.044,.061,p.y));
+    float forward = smoothstep(.156,.186,p.z);
+    float groove = 0.;
+    for (int i=0; i<4; i++) {
+      float center = -.029 + float(i)*.018 + .06*(p.z-.180);
+      groove = max(groove,exp(-pow((p.x-center)/.0026,2.)));
+    }
+    return dorsal*forward*groove;
+  }
+  float toeNailDetail(vec3 p) {
+    float dorsal = smoothstep(.017,.027,p.y)*(1.-smoothstep(.042,.053,p.y));
+    float nail = 0.;
+    for (int i=0; i<5; i++) {
+      float x = -.039+float(i)*.019;
+      float z = .198-.006*max(0.,float(i)-1.);
+      vec2 q=vec2((p.x-x)/.006,(p.z-z)/.007);
+      nail=max(nail,exp(-dot(q,q)*1.55));
+    }
+    return nail*dorsal;
+  }
   uniform vec3 skinTint;
   uniform float skinLightness;
   varying vec3 surfaceNormal;
@@ -196,6 +220,12 @@ export const skinFragment = /* glsl */`
     vec3 skinColor = mix(vec3(.68,.46,.45),vec3(.89,.73,.72),modeled);
     skinColor *= mix(vec3(.88,.80,.84),vec3(1.),smoothstep(.01,.70,incidence));
     skinColor *= skinTint * skinLightness;
+    // The reference geometry contains five distinct toes. Emphasize its
+    // dorsal toe separations and nail plates by lighting, not fake meshes.
+    float separation = toeGrooves(restSurface);
+    float nails = toeNailDetail(restSurface);
+    skinColor *= 1. - .145*separation;
+    skinColor = mix(skinColor,skinColor*vec3(1.07,1.045,1.04),nails*.30);
     // Preserve the original cutaway transparency on both sides. The inner
     // cutaway has its OWN fixed colour ramp: natural warm skin at the base,
     // feathering toward white at the top, independently of skin swatches.
@@ -234,6 +264,7 @@ export const fabricFragment = /* glsl */`
   uniform float lengthLimit;
   uniform float band;
   uniform float denier;
+  uniform float toeStyle;
   uniform float fabric;
   uniform float cuff;
   uniform float pattern;
@@ -248,6 +279,16 @@ export const fabricFragment = /* glsl */`
   varying vec3 facing;
   varying vec3 eyeDirection;
 
+  float toeGrooves(vec3 p) {
+    float dorsal = smoothstep(.014,.027,p.y)*(1.-smoothstep(.044,.061,p.y));
+    float forward = smoothstep(.156,.186,p.z);
+    float groove = 0.;
+    for (int i=0; i<4; i++) {
+      float center = -.029 + float(i)*.018 + .06*(p.z-.180);
+      groove=max(groove,exp(-pow((p.x-center)/.0026,2.)));
+    }
+    return dorsal*forward*groove;
+  }
   float hash(vec2 p) {
     return fract(sin(dot(p,vec2(19.27,112.9))) * 8372.356);
   }
@@ -296,10 +337,13 @@ export const fabricFragment = /* glsl */`
     vec3 rgb = skin;
     float garmentOpacity = 0.;
     if (stocking > 0. && skinOnly == 0.) {
-      // Optical coverage is independent of the skin layer. Wet cloth transmits more light.
-      garmentOpacity = clamp(.38 + denier * .0078 + max(0., fabric - 2.) * .10, .40, .96);
-      if (fabric >= 6.) garmentOpacity = .97;
-      float dense = clamp(.41 + denier * .0037 + max(0.,fabric-2.)*.19, .41, .96);
+      // Denier has a saturating, non-linear optical response. The old linear
+      // alpha hit its ceiling near 80D, making 120D/200D almost identical.
+      // These are perceptual coverage controls, not a textile lab calibration.
+      float d = clamp(denier,5.,200.);
+      garmentOpacity = clamp(.27+.73*(1.-exp(-d/48.)),.32,.975);
+      float dense = clamp(.30+.66*(1.-exp(-d/68.)),.33,.96);
+      if (fabric >= 4.) { garmentOpacity = .97; dense = .96; }
       vec3 base = mix(skin * vec3(.86,.86,.88),dye,dense);
       base *= mix(.82,1.16,modeled);
       float print = shape(pattern,textile);
@@ -326,7 +370,24 @@ export const fabricFragment = /* glsl */`
       if (secret > 0.) wet *= 1. - .42*shape(secret,textile);
       if (fabric >= 6.) wet = base;
       rgb = mix(base,wet,wetness);
-      garmentOpacity = mix(garmentOpacity, max(.25, garmentOpacity * .70), wetness);
+      garmentOpacity = mix(garmentOpacity,max(.23,garmentOpacity*.70),wetness);
+      // Local toe-groove contrast follows the real mesh, and is partly hidden
+      // by thicker hosiery. Reinforced toes add a separate graduated toe cap.
+      float toeCrease = toeGrooves(localPoint);
+      float toeRegion = smoothstep(.130,.181,localPoint.z)
+                      * (1.-smoothstep(.040,.069,localPoint.y));
+      float detailStrength = mix(.14,.055,clamp(d/200.,0.,1.));
+      rgb *= 1.-detailStrength*toeCrease;
+      if (fabric < 4.) {
+        if (toeStyle > .5 && toeStyle < 1.5) {
+          // Reinforcement follows the top of the original toe volume instead
+          // of creating an artificial flat colour band across the whole foot.
+          garmentOpacity = mix(garmentOpacity,min(.985,garmentOpacity+.24),toeRegion);
+          rgb = mix(rgb,dye*.85,toeRegion*.18);
+        } else if (toeStyle > 1.5) {
+          garmentOpacity = mix(garmentOpacity,max(.18,garmentOpacity*.78),toeRegion);
+        }
+      }
       rgb += knit * mix(1.,.22,wetness);
       rgb += shine * (.035 + .12*wetness + .13*float(fabric==2.) + .34*step(6.,fabric));
       float fresnel = pow(1.-incidence,2.7);
