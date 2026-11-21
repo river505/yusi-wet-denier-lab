@@ -277,8 +277,8 @@ export const fabricFragment = /* glsl */`
     float garmentOpacity = 0.;
     if (stocking > 0. && skinOnly == 0.) {
       // Optical coverage is independent of the skin layer. Wet cloth transmits more light.
-      garmentOpacity = clamp(.22 + denier * .0048 + max(0., fabric - 2.) * .10, .23, .90);
-      if (fabric >= 6.) garmentOpacity = .94;
+      garmentOpacity = clamp(.38 + denier * .0078 + max(0., fabric - 2.) * .10, .40, .96);
+      if (fabric >= 6.) garmentOpacity = .97;
       float dense = clamp(.41 + denier * .0037 + max(0.,fabric-2.)*.19, .41, .96);
       vec3 base = mix(skin * vec3(.86,.86,.88),dye,dense);
       base *= mix(.82,1.16,modeled);
@@ -304,7 +304,7 @@ export const fabricFragment = /* glsl */`
       if (secret > 0.) wet *= 1. - .42*shape(secret,textile);
       if (fabric >= 6.) wet = base;
       rgb = mix(base,wet,wetness);
-      garmentOpacity = mix(garmentOpacity, max(.14, garmentOpacity * .58), wetness);
+      garmentOpacity = mix(garmentOpacity, max(.25, garmentOpacity * .70), wetness);
       rgb += knit * mix(1.,.22,wetness);
       rgb += shine * (.035 + .12*wetness + .13*float(fabric==2.) + .34*step(6.,fabric));
       float fresnel = pow(1.-incidence,2.7);
