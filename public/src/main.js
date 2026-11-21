@@ -71,12 +71,14 @@ function createSound() {
   };
 }
 
-function fabricMaterial() {
+function fabricMaterial(skinAppearance) {
   return new THREE.ShaderMaterial({
     uniforms: {
       dye: { value: new THREE.Color(palette.ink) },
       wetDye: { value: new THREE.Color(0) },
       tint: { value: new THREE.Color(0xffffff) },
+      skinTint: skinAppearance.tint,
+      skinLightness: skinAppearance.lightness,
       lengthLimit: { value: .7 },
       band: { value: .05 },
       denier: { value: 40 },
@@ -248,6 +250,12 @@ function createEngine({ stocking }) {
   floorShade.rotation.x = -Math.PI / 2;
   floorShade.renderOrder = -3;
   world.add(floorShade);
+  // Global skin appearance; the skin and the garment use the SAME uniforms.
+  // Default (1,1,1) exactly reproduces the upstream shader's original skin.
+  const skinAppearance = {
+    tint: { value: new THREE.Vector3(1,1,1) },
+    lightness: { value: 1 },
+  };
   const legMeshes = [];
   const models = [0, 1].map(index => {
     const group = new THREE.Group();
@@ -255,6 +263,7 @@ function createEngine({ stocking }) {
     // The supplied 'skin' GLB mesh covers only the upper thigh, leaving a gap below it.
     // The skin shader recesses its vertices slightly so cloth stays outside and anti-z-fights.
     const skinMesh = new THREE.Mesh(stocking.clone(), new THREE.ShaderMaterial({
+      uniforms: { skinTint: skinAppearance.tint, skinLightness: skinAppearance.lightness },
       vertexShader: skinVertex, fragmentShader: skinFragment,
       // Opaque, depth-writing skin on both sides of the open leg.
       // Its inward-facing surface screens the dark BackSide outline when
@@ -266,7 +275,7 @@ function createEngine({ stocking }) {
     skinMesh.renderOrder = 0;
     group.add(skinMesh);
     const geometry = stocking.clone();
-    const cloth = new THREE.Mesh(geometry, fabricMaterial());
+    const cloth = new THREE.Mesh(geometry, fabricMaterial(skinAppearance));
     cloth.userData.leg = index;
     cloth.material.depthWrite = false;
     cloth.renderOrder = 1;
@@ -364,6 +373,30 @@ function createEngine({ stocking }) {
       reflection.visible = group.visible && !belowGround && reflectAmount > 0;
     });
     floorShade.material.color.set({bath: '#84929f', pool: '#8a877f', street: '#252333'}[environment] ?? '#9a88a8');
+  }
+
+  function setSkinAppearance(config = {}) {
+    const tone = config.tone || 'original';
+    const preset = {
+      original: [1,1,1],
+      porcelain: [1.16,1.22,1.18],
+      warm: [1.08,1.03,.93],
+      neutral: [1,.96,.94],
+      tan: [.83,.79,.72],
+      deep: [.62,.63,.59],
+    };
+    let multipliers = preset[tone];
+    if (!multipliers && /^#[0-9a-f]{6}$/i.test(tone)) {
+      // For custom swatches, compare sRGB channel proportions to the
+      // original skin's representative display colour. A multiplier of
+      // exactly one remains the canonical, source-matched appearance.
+      const rgb = [1,3,5].map(i=>parseInt(tone.slice(i,i+2),16));
+      multipliers = rgb.map((v,i)=>THREE.MathUtils.clamp(v/[201,157,154][i],.42,1.48));
+    }
+    skinAppearance.tint.value.set(...(multipliers || preset.original));
+    const brightness = Number(config.brightness);
+    skinAppearance.lightness.value = THREE.MathUtils.clamp(
+      Number.isFinite(brightness) ? brightness/100 : 1, .70, 1.30);
   }
 
   function setMaterial(config) {
@@ -777,7 +810,7 @@ function createEngine({ stocking }) {
   setPose('step');
 
   return {
-    setScene, setMaterial, setPose, zoom, orbit, resetCamera, bucket, dry, photo, thumbnail,
+    setScene, setSkinAppearance, setMaterial, setPose, zoom, orbit, resetCamera, bucket, dry, photo, thumbnail,
     setMode(value) { mode = value; lastInput = performance.now(); },
     setRain(value) { rain = value; },
     setSlow(value) { slow = value; },
