@@ -645,6 +645,36 @@ body.about-open .about {
 }
 .denier-adjust .unit { font-size:11px; color:var(--ink-soft); }
 .denier-adjust.idle { opacity:.43; pointer-events:none; }
+.motion-control {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:9px;
+  min-width:0;
+}
+.motion-control[hidden] { display:none; }
+.motion-control button {
+  border:1px solid var(--hairline);
+  border-radius:10px;
+  padding:8px 12px;
+  color:var(--ink);
+  background:var(--chip);
+  white-space:nowrap;
+}
+.motion-speed { display:flex; align-items:center; gap:8px; flex:1; min-width:140px; }
+.motion-speed input[type=range] {
+  flex:1;
+  min-width:80px;
+  width:100%;
+  accent-color:var(--accent);
+}
+.motion-speed output {
+  min-width:34px;
+  text-align:right;
+  font-size:11px;
+  color:var(--ink-soft);
+  font-variant-numeric:tabular-nums;
+}
 .sheet-foot {
   display:flex;
   align-items:center;
