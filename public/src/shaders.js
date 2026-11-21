@@ -6,6 +6,16 @@ export const stageVertex = /* glsl */`
   }
 `;
 
+// World-anchored panorama: reuses the existing illustrated environment shader,
+// but uses perspective-projected spherical UVs instead of a camera-fixed screen quad.
+export const panoramaVertex = /* glsl */`
+  varying vec2 screenUV;
+  void main() {
+    screenUV = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
+  }
+`;
+
 export const stageFragment = /* glsl */`
   uniform vec3 upper;
   uniform vec3 lower;
