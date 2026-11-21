@@ -187,7 +187,8 @@ export const skinFragment = /* glsl */`
     float groove = 0.;
     for (int i=0; i<4; i++) {
       float center = -.029 + float(i)*.018 + .06*(p.z-.180);
-      groove = max(groove,exp(-pow((p.x-center)/.0026,2.)));
+      float dx = (p.x-center)/.0026;
+      groove = max(groove,exp(-dx*dx));
     }
     return dorsal*forward*groove;
   }
@@ -285,7 +286,8 @@ export const fabricFragment = /* glsl */`
     float groove = 0.;
     for (int i=0; i<4; i++) {
       float center = -.029 + float(i)*.018 + .06*(p.z-.180);
-      groove=max(groove,exp(-pow((p.x-center)/.0026,2.)));
+      float dx = (p.x-center)/.0026;
+      groove=max(groove,exp(-dx*dx));
     }
     return dorsal*forward*groove;
   }
