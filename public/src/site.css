@@ -631,6 +631,20 @@ body.about-open .about {
   color:var(--ink-soft);
   font-variant-numeric:tabular-nums;
 }
+.leg-summary { display:flex; flex-wrap:wrap; gap:6px; }
+.leg-summary button { font-size:11px; padding:7px 10px; border-radius:9px; }
+.leg-summary button.on { border-color:var(--ink); background:var(--ink); color:var(--paper,#fff); }
+.leg-tools { display:flex; flex-wrap:wrap; gap:6px; }
+.leg-tools button { font-size:11px; padding:6px 9px; }
+.denier-adjust { display:flex; gap:8px; align-items:center; min-width:0; }
+.denier-adjust input[type=range] { flex:1; width:100%; min-width:72px; accent-color:#9580a5; touch-action:auto; }
+.denier-adjust input[type=number] {
+ width:55px; min-width:55px; padding:7px 4px; border:1px solid var(--hairline);
+ border-radius:8px; background:var(--chip); color:var(--ink); text-align:center;
+ font:12px system-ui,sans-serif;
+}
+.denier-adjust .unit { font-size:11px; color:var(--ink-soft); }
+.denier-adjust.idle { opacity:.43; pointer-events:none; }
 .sheet-foot {
   display:flex;
   align-items:center;
