@@ -612,6 +612,7 @@ function createEngine({ stocking }) {
       floorShade.material.map=shadowCache.get(pose);
       floorShade.material.needsUpdate=true;
     }
+    if(panelCamera.active)fitPanelCamera();
   }
 
   function panelBounds(){
@@ -1138,6 +1139,7 @@ function createEngine({ stocking }) {
       legSpacing=next;
       placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
       refreshStandingShadow();
+      if(panelCamera.active)fitPanelCamera();
     },
     setFootPitch(values) {
       const next = [0,1].map(i=>THREE.MathUtils.clamp(Number(values?.[i]) || 0,-35,35));
@@ -1158,6 +1160,7 @@ function createEngine({ stocking }) {
         placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
       }
       if(isAdjustableStandingPose(pose))refreshStandingShadow();
+      if(panelCamera.active)fitPanelCamera();
     },
     setFootMotion(value){
       const next=Object.fromEntries(['lateral','forward','heel'].map(key=>[
@@ -1188,6 +1191,7 @@ function createEngine({ stocking }) {
         else view.target.y*=ratio;
       }
       refreshStandingShadow();
+      if(panelCamera.active)fitPanelCamera();
     },
     setMotionPlaying(value) { motionPlaying=Boolean(value); },
     setMotionSpeed(value) { motionSpeed=THREE.MathUtils.clamp(Number(value)||1,.5,2); },
