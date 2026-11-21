@@ -41,6 +41,7 @@ const SECRETS = {none: '无', hearts: '藏爱心', stars: '藏星星', paws: '�
 const WET_COLORS = {'': '不变', sakura: '变樱粉', mist: '变雾蓝', taro: '变香芋紫', cherry: '变正红'};
 const DENIERS = {15: '15D', 40: '40D', 70: '70D', 120: '120D', 200: '200D'};
 const clampDenier = value => Math.max(5,Math.min(200,Math.round(Number(value)||40)));
+const TOE_STYLES = { natural:'自然袜尖', reinforced:'加固袜尖', seamless:'轻薄袜尖' };
 const BACKDROPS = {
   lilac: ['浅紫', '#e4dce8'], sakura: ['樱粉', '#f3d6dd'], mint: ['薄荷', '#cfe7df'],
   cream: ['奶油', '#f0e3c8'], sky: ['天蓝', '#cbdff3'], dusk: ['夜蓝', '#2a2944'],
@@ -56,7 +57,7 @@ const TABS = {
 };
 const DEFAULT_STOCKING = {
   length: 'thigh', cuff: 'lace', garter: false, material: 'sheer', denier: 40,
-  pattern: 'none', color: 'ink', secret: 'none', wetColor: null,
+  pattern: 'none', color: 'ink', secret: 'none', wetColor: null, toeStyle:'natural',
 };
 const PRESETS = [
   ['经典黑丝', {}],
@@ -150,7 +151,7 @@ function decodeColor(value, options) {
 function serializeLook(state) {
   const legs = state.legs.map(leg => [
     leg.length, leg.cuff, Number(leg.garter), leg.material, leg.denier, leg.pattern,
-    encodeColor(leg.color), leg.secret, encodeColor(leg.wetColor) || '-',
+    encodeColor(leg.color), leg.secret, encodeColor(leg.wetColor) || '-', leg.toeStyle||'natural',
   ].join('.'));
   return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs,
     encodeColor(state.skinTone), state.skinBrightness].join('~');
@@ -164,7 +165,7 @@ function deserializeLook(hash) {
   if (version !== '1') return null;
 
   const readLeg = value => {
-    const [length, cuff, garter, material, denier, pattern, color, secret, wetColor] =
+    const [length, cuff, garter, material, denier, pattern, color, secret, wetColor, toeStyle='natural'] =
       (value || '').split('.');
     return {
       length: Object.hasOwn(STOCKING_LENGTHS, length) ? length : 'thigh',
@@ -176,6 +177,7 @@ function deserializeLook(hash) {
       color: decodeColor(color, COLORS) || 'ink',
       secret: Object.hasOwn(SECRETS, secret) ? secret : 'none',
       wetColor: decodeColor(wetColor, COLORS),
+      toeStyle: Object.hasOwn(TOE_STYLES,toeStyle) ? toeStyle : 'natural',
     };
   };
 
@@ -257,6 +259,7 @@ export function initUI(engine) {
         Object.entries(MATERIALS).map(([key, [label]]) => [key, label]),
       ))),
       row('常用D', choices('denier', DENIERS)),
+      row('袜尖', choices('toeStyle', TOE_STYLES)),
       row('自定义D', element('div', {class:'denier-adjust'}, [
         denierRange, denierNumber, element('span', {class:'unit'}, ['D']),
       ])),
