@@ -17,6 +17,7 @@ const isLyingName=name=>Object.hasOwn(LYING_POSES,name);
 const MOTION_KEYS=Object.keys(MOTION_POSES);
 const defaultAmplitudes=()=>Object.fromEntries(MOTION_KEYS.map(name=>[name,100]));
 const clampAmplitude=value=>Math.max(20,Math.min(200,Math.round((Number(value)||100)/10)*10));
+const clampFootPitch=value=>Math.max(-35,Math.min(35,Math.round(Number(value)||0)));
 
 const STOCKING_LENGTHS = {
   ankle: '短袜', crew: '中筒袜', knee: '及膝袜', over: '过膝袜', thigh: '大腿袜', tights: '连裤袜',
@@ -170,14 +171,18 @@ function serializeLook(state) {
   ].join('.'));
   const amplitudes=MOTION_KEYS.map(name=>clampAmplitude(state.motionAmplitudes?.[name])).join('-');
   return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs,
-    encodeColor(state.skinTone), state.skinBrightness, amplitudes].join('~');
+    encodeColor(state.skinTone), state.skinBrightness, amplitudes,
+    state.footPitch.map(clampFootPitch).join(',')].join('~');
 }
 
 function deserializeLook(hash) {
   const serialized = new URLSearchParams(hash.slice(1)).get('look');
   if (!serialized) return null;
   const [version, pose, scene, backdrop, left, right = left,
-    tone = 'original', brightness = '100', amps='100-100-100-100-100'] = serialized.split('~');
+    tone = 'original', brightness = '100', amps='100-100-100-100-100',
+    pitches='0,0'] = serialized.split('~');
+  const pitchParts=pitches.split(',');
+  const footPitch=[clampFootPitch(pitchParts[0]),clampFootPitch(pitchParts[1])];
   const ampParts=amps.split('-');
   const motionAmplitudes=Object.fromEntries(MOTION_KEYS.map(
     (key,index)=>[key,clampAmplitude(ampParts[index])]
@@ -210,6 +215,7 @@ function deserializeLook(hash) {
     skinBrightness: Number.isFinite(Number(brightness))
       ? Math.max(70,Math.min(130,Number(brightness))) : 100,
     motionAmplitudes,
+    footPitch,
   };
 }
 
@@ -219,6 +225,7 @@ export function initUI(engine) {
     mode: 'water', rain: false, slow: false, sound: true, legs: presetLegs(0),
     skinTone: 'original', skinBrightness: 100,
     motionAmplitudes: defaultAmplitudes(),
+    footPitch:[0,0], footTarget:'both',
   };
   const body = document.body;
   const view = get('#view');
@@ -235,6 +242,11 @@ export function initUI(engine) {
   const sceneNote = note('');
   scenes.replaceChildren(sceneChoices, backdropRow, sceneNote);
 
+  const footPitchSlider=element('input',{id:'footPitchSlider',type:'range',min:'-35',
+    max:'35',step:'1',value:'0','aria-label':'脚面相对小腿的踝关节倾斜角'});
+  const footPitchValue=element('output',{id:'footPitchValue'},['0°']);
+  const footPitchHint=note('0° 是当前姿势默认角度；平躺时保持自然的约 90° 踝角。');
+  const footPitchTargets=choices('footTarget',{'both':'双脚','0':'左脚','1':'右脚'});
   const motionToggle = button('暂停动作',{id:'motionToggle'});
   const motionSpeedInput=element('input',{id:'motionSpeed',type:'range',min:'0.5',
     max:'2',step:'0.1',value:'1','aria-label':'动作播放速度'});
@@ -279,8 +291,14 @@ export function initUI(engine) {
       row('坐姿',choices('pose',SEATED_POSES)),
       row('躺姿',choices('pose',LYING_POSES)),
       row('动态',choices('pose',MOTION_POSES)),
+      row('踝关节', footPitchTargets),
+      row('脚面俯仰',element('div',{class:'foot-pitch'},[
+        footPitchSlider,footPitchValue,
+        button('复位',{id:'footPitchReset',class:'pill'}),
+      ])),
+      footPitchHint,
       row('播放',motionControl),
-      note('平躺二郎腿可选左搭右或右搭左；侧躺可选左右。动作幅度独立保存，速度和暂停单独控制。','pane-hint keys'),
+      note('所有站姿、坐姿、躺姿及动态动作均使用脚面俯仰设置；左右脚可独立控制。','pane-hint keys'),
     ],
     preset: [presetChoices],
     style: [
@@ -400,6 +418,12 @@ export function initUI(engine) {
     syncChoices(materials, 'skinTone', state.skinTone);
     const lightnessOutput = get('#skinBrightnessValue');
     if (lightnessOutput) lightnessOutput.textContent = state.skinBrightness + '%';
+    syncChoices(materials, 'footTarget', state.footTarget);
+    footPitchSlider.value=String(state.footPitch[state.footTarget==='1'?1:0]);
+    footPitchValue.textContent=footPitchSlider.value+'°';
+    footPitchHint.textContent=state.footTarget==='both' && state.footPitch[0]!==state.footPitch[1]
+      ? '当前左脚 '+state.footPitch[0]+'° / 右脚 '+state.footPitch[1]+'°；拖动滑块会统一双脚。'
+      : '0° 保留姿势默认踝角。范围 −35° 至 +35°；躺姿的自然约 90° 踝角可在此基础上调整。';
     syncChoices(materials, 'pose', state.pose);
     motionControl.hidden = !isMotionName(state.pose);
     motionToggle.textContent=motionPlaying?'暂停动作':'继续动作';
@@ -613,6 +637,8 @@ export function initUI(engine) {
       state.skinTone = look.skinTone;
       state.skinBrightness = look.skinBrightness;
       state.motionAmplitudes=look.motionAmplitudes;
+      state.footPitch=look.footPitch;
+      engine.setFootPitch(state.footPitch);
       get('#skinBrightness').value = String(state.skinBrightness);
       engine.setSkinAppearance({tone: state.skinTone, brightness: state.skinBrightness});
       setPose(look.pose);
@@ -696,6 +722,9 @@ export function initUI(engine) {
     } else if (key === 'target') {
       state.target = value;
       syncWardrobe();
+    } else if (key === 'footTarget') {
+      state.footTarget = value;
+      syncWardrobe();
     } else if (key === 'preset') {
       state.target = '-1';
       applyMaterial(presetLegs(Number(value)));
@@ -730,6 +759,15 @@ export function initUI(engine) {
     engine.resetCamera();
     setPanel(null);
   });
+  function setFootPitchValue(degrees) {
+    const value=clampFootPitch(degrees);
+    state.footPitch=state.footPitch.map((old,index)=>
+      state.footTarget==='both'||state.footTarget===String(index)?value:old);
+    engine.setFootPitch(state.footPitch);
+    syncWardrobe();
+  }
+  footPitchSlider.addEventListener('input',()=>setFootPitchValue(footPitchSlider.value));
+  get('#footPitchReset').addEventListener('click',()=>setFootPitchValue(0));
   motionToggle.addEventListener('click',()=>{
     motionPlaying=!motionPlaying;
     engine.setMotionPlaying(motionPlaying);
@@ -865,6 +903,7 @@ export function initUI(engine) {
   window.addEventListener('hashchange', applyLook);
   engine.setScene(state.scene, state.backdrop);
   engine.setPose(state.pose);
+  engine.setFootPitch(state.footPitch);
   engine.setSkinAppearance({tone: state.skinTone,brightness: state.skinBrightness});
   applyMaterial();
   setMode(state.mode, false);
