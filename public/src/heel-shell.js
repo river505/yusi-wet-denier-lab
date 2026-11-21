@@ -71,6 +71,11 @@ export function makeHeelShell(THREE,restGeometry){
     polygon=clip(polygon,2,HEEL_SHELL_Z);
     if(polygon.length<3)continue;
     for(let i=1;i<polygon.length-1;i++){
+      const p0=polygon[0].point,p1=polygon[i].point,p2=polygon[i+1].point;
+      const ax=p1[0]-p0[0],ay=p1[1]-p0[1],az=p1[2]-p0[2];
+      const bx=p2[0]-p0[0],by=p2[1]-p0[1],bz=p2[2]-p0[2];
+      const cx=ay*bz-az*by,cy=az*bx-ax*bz,cz=ax*by-ay*bx;
+      if(cx*cx+cy*cy+cz*cz<1e-17)continue;
       for(const p of [polygon[0],polygon[i],polygon[i+1]]){
         meshRest.push(...p.point);
         meshPositions.push(...p.point);
@@ -118,8 +123,10 @@ export function makeHeelShell(THREE,restGeometry){
 }
 export function updateHeelShell(shell,posedGeometry){
   const {geometry,sources,bary,rest,anchorIndices,restBasis}=shell;
-  const pts=posedGeometry.attributes.position,ns=posedGeometry.attributes.normal;
-  const anchors=anchorIndices.map(i=>[pts.getX(i),pts.getY(i),pts.getZ(i)]);
+  const pts=posedGeometry.attributes.position.array;
+  const ns=posedGeometry.attributes.normal.array;
+  const anchors=anchorIndices.map(i=>[
+    pts[i*3],pts[i*3+1],pts[i*3+2]]);
   const frame=basis(...anchors);
   const P=geometry.attributes.position.array;
   const N=geometry.attributes.normal.array;
@@ -130,9 +137,9 @@ export function updateHeelShell(shell,posedGeometry){
     const j=i*3;
     let px=0,py=0,pz=0,nx=0,ny=0,nz=0;
     for(let k=0;k<3;k++){
-      const idx=sources[j+k],w=bary[j+k];
-      px+=pts.getX(idx)*w;py+=pts.getY(idx)*w;pz+=pts.getZ(idx)*w;
-      nx+=ns.getX(idx)*w;ny+=ns.getY(idx)*w;nz+=ns.getZ(idx)*w;
+      const idx=sources[j+k]*3,w=bary[j+k];
+      px+=pts[idx]*w;py+=pts[idx+1]*w;pz+=pts[idx+2]*w;
+      nx+=ns[idx]*w;ny+=ns[idx+1]*w;nz+=ns[idx+2]*w;
     }
     const dx=R[j]-rest[0][0],dy=R[j+1]-rest[0][1],
       dz=R[j+2]-rest[0][2];
