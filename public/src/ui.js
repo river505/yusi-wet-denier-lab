@@ -637,6 +637,7 @@ export function initUI(engine) {
     get('#aboutBtn').setAttribute('aria-expanded', String(about));
     get('#about').setAttribute('aria-hidden', String(!about));
     readInsets();
+    engine.setPanelFraming(wardrobe||scene);
     drawThumbnails();
   }
 
@@ -829,6 +830,11 @@ export function initUI(engine) {
     state.tab = tab.dataset.tab;
     syncWardrobe();
     tab.scrollIntoView?.({block: 'nearest', inline: 'nearest'});
+    // Material tabs can change the sheet height; recompute the visible
+    // top region after the next layout pass.
+    requestAnimationFrame(()=>{
+      if(body.classList.contains('sheet-open'))engine.setPanelFraming(true,true);
+    });
     drawThumbnails();
   });
   materials.addEventListener('click', event => {
