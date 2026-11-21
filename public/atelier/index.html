@@ -10,7 +10,7 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.55 -apple-system
 header{height:64px;display:flex;justify-content:space-between;align-items:center;padding:0 28px;background:#101823;border-bottom:1px solid var(--line)}
 .brand{font:23px Georgia,serif;letter-spacing:.26em;color:var(--accent)}header small{font:10px monospace;letter-spacing:.12em;color:#a7b3b9}
 main{height:calc(100dvh - 64px);min-height:600px;display:grid;grid-template-columns:minmax(0,1fr) 322px}
-#stage{position:relative;overflow:hidden;background:radial-gradient(circle at 53% 35%,#3e5060 0%,#1c2a38 47%,#0e151e 83%)}
+#stage{position:relative;overflow:hidden;background:#111b26}
 canvas{display:block;height:100%;width:100%;touch-action:none}
 .hero{position:absolute;left:27px;top:26px;pointer-events:none}
 .eyebrow{font:10px monospace;letter-spacing:.22em;color:var(--accent)}h1{margin:8px 0 7px;font:normal clamp(27px,3.5vw,46px) Georgia,serif}
@@ -42,8 +42,8 @@ select{width:100%;background:#263441;border:1px solid #475360;color:#fff;padding
 <div class="hero"><div class="eyebrow">01 / HUMAN SURFACE</div><h1>连续人体 · 织物模拟</h1><p>采用真实人体拓扑，不再截断腿部。皮肤与服装分别计算，支持局部润湿与材质调节。</p></div>
 <div class="badge">MAKEHUMAN hm08 / CC0</div>
 <div id="loading">正在载入真实人体网格…</div>
-<div class="status"><div id="assetinfo">MESH · LOADING</div><div id="performance">GPU · INITIALIZING</div><div>拖动旋转 · 滚轮缩放 · 点击施加水斑</div></div>
-<div class="actions"><button id="mode" class="active">泼水模式</button><button id="wipe">擦干</button><button id="snapshot">截图</button></div>
+<div class="status"><div id="assetinfo">MESH · LOADING</div><div id="performance">GPU · INITIALIZING</div><div>场景与相机同步 · 拖动旋转 · 滚轮缩放 · 点击泼水</div></div>
+<div class="actions"><button id="front">正面</button><button id="side">侧面</button><button id="back">背面</button><button id="mode" class="active">泼水模式</button><button id="wipe">擦干</button><button id="snapshot">截图</button></div>
 </section>
 <aside>
 <div class="eyebrow">MATERIAL DESIGN WORKSPACE</div><h2>人体与织物工作台</h2>
@@ -66,6 +66,8 @@ select{width:100%;background:#263441;border:1px solid #475360;color:#fff;padding
 </div>
 <div class="section tech">
 BODY · MakeHuman hm08, CC0 1.0<br>
+CAMERA · ORBIT AROUND CALIBRATED BOUNDS<br>
+ENVIRONMENT · WORLD-LOCKED STUDIO GEOMETRY<br>
 TOPOLOGY · CLOSED BODY / NO LEG CUTS<br>
 FABRIC · DOUBLE-SIDED CLOSED SHELL WITH HEMS<br>
 SHADING · FRESNEL / GLOSS / MICRO WEAVE<br>
@@ -131,8 +133,56 @@ const rim=new THREE.DirectionalLight('#b6d5ff',2.2);rim.position.set(-3,3,-2.5);
 const floor=new THREE.Mesh(new THREE.CircleGeometry(2.4,96),new THREE.MeshStandardMaterial({color:'#22303b',roughness:.91,metalness:.05}));
 floor.rotation.x=-Math.PI/2;floor.position.y=-.02;scene.add(floor);
 const grid=new THREE.GridHelper(4.3,28,0x405161,0x2b3b49);grid.position.y=-.017;scene.add(grid);
-let yaw=.30,pitch=.13,zoom=3.3,modeWet=true;
+
+/* Studio geometry is fixed in world space. It must NOT be parented to the camera
+   or attached as a static screen-space background. */
+const environment=new THREE.Group();environment.name='WorldLockedStudio';scene.add(environment);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(24,24),
+  new THREE.MeshStandardMaterial({color:0x131e29,roughness:.98,metalness:.02}));
+ground.rotation.x=-Math.PI/2;ground.position.y=-.035;environment.add(ground);
+const cylGeo=new THREE.CylinderGeometry(5.8,5.8,4.6,96,10,true);
+const wallPos=cylGeo.getAttribute('position'),wallColors=[];
+const dark=new THREE.Color('#101d2a'),light=new THREE.Color('#35495d');
+for(let k=0;k<wallPos.count;k++){
+  const y=(wallPos.getY(k)+2.3)/4.6;
+  const a=Math.atan2(wallPos.getX(k),wallPos.getZ(k));
+  const warm=.09+.045*Math.cos(a*4);
+  const c=dark.clone().lerp(light,Math.max(0,Math.min(1,y*.84+warm)));
+  wallColors.push(c.r,c.g,c.b);
+}
+cylGeo.setAttribute('color',new THREE.Float32BufferAttribute(wallColors,3));
+const wall=new THREE.Mesh(cylGeo,new THREE.MeshBasicMaterial({
+  vertexColors:true,side:THREE.BackSide,depthWrite:true}));
+wall.position.y=2.24;environment.add(wall);
+const studioColors=['#4b718c','#9b7a63','#587b79','#62748e','#8b7380','#687f8d','#786f67','#53748a'];
+for(let i=0;i<8;i++){
+  const a=i*Math.PI/4+.13;
+  const holder=new THREE.Group();
+  holder.position.set(5.24*Math.sin(a),0,5.24*Math.cos(a));
+  holder.rotation.y=a;
+  const frame=new THREE.Mesh(new THREE.BoxGeometry(.72,2.8,.07),
+    new THREE.MeshBasicMaterial({color:0x263443}));
+  frame.position.y=1.5;holder.add(frame);
+  const panel=new THREE.Mesh(new THREE.PlaneGeometry(.56,2.57),
+    new THREE.MeshBasicMaterial({color:studioColors[i],transparent:true,opacity:.35,side:THREE.DoubleSide}));
+  panel.position.set(0,1.5,-.046);holder.add(panel);
+  const strip=new THREE.Mesh(new THREE.BoxGeometry(.025,2.66,.09),
+    new THREE.MeshBasicMaterial({color:0xb7c9d9,transparent:true,opacity:.27}));
+  strip.position.set(-.33,1.5,-.04);holder.add(strip);
+  environment.add(holder);
+}
+for(let k=0;k<3;k++){
+ const ring=new THREE.Mesh(new THREE.RingGeometry(1.7+k*.73,1.711+k*.73,128),
+   new THREE.MeshBasicMaterial({color:0x668095,side:THREE.DoubleSide,transparent:true,opacity:.21,depthWrite:false}));
+ ring.rotation.x=-Math.PI/2;ring.position.y=-.01+k*.0002;environment.add(ring);
+}
+const originMarker=new THREE.Mesh(new THREE.RingGeometry(.1,.113,48),
+   new THREE.MeshBasicMaterial({color:0xd2af85,side:THREE.DoubleSide}));
+originMarker.rotation.x=-Math.PI/2;originMarker.position.y=-.008;environment.add(originMarker);
+
+let yaw=.0,pitch=.08,zoom=3.1,modeWet=true;
 const target=new THREE.Vector3(0,.92,0);
+const modelReference={center:new THREE.Vector3(),ground:0,height:1.75};
 function setCamera(){pitch=THREE.MathUtils.clamp(pitch,-.8,1.1);zoom=THREE.MathUtils.clamp(zoom,1.6,6);camera.position.set(zoom*Math.sin(yaw)*Math.cos(pitch),target.y+zoom*Math.sin(pitch),zoom*Math.cos(yaw)*Math.cos(pitch));camera.lookAt(target)}
 setCamera();
 function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
@@ -213,6 +263,15 @@ async function init(){
 try{
 const response=await fetch('/atelier/assets/human_body_hm08.obj');if(!response.ok)throw Error('asset HTTP '+response.status);
 geometry=parseBody(await response.text());
+geometry.computeBoundingBox();
+const bounds=geometry.boundingBox;
+modelReference.center.set((bounds.min.x+bounds.max.x)/2,bounds.min.y,(bounds.min.z+bounds.max.z)/2);
+geometry.translate(-modelReference.center.x,-modelReference.center.y,-modelReference.center.z);
+geometry.computeBoundingBox();
+modelReference.ground=0;
+modelReference.height=geometry.boundingBox.max.y;
+target.set(0,modelReference.height*.54,0);
+setCamera();
 const count=geometry.attributes.position.count,faces=geometry.index.count/3;
 const tally=new Map(),ind=geometry.index.array;
 for(let i=0;i<ind.length;i+=3){for(let k=0;k<3;k++){const a=ind[i+k],b=ind[i+(k+1)%3],key=Math.min(a,b)+':'+Math.max(a,b);tally.set(key,(tally.get(key)||0)+1)}}
@@ -221,7 +280,7 @@ skin=new THREE.Mesh(geometry,new THREE.MeshPhysicalMaterial({color:'#bba796',rou
 human.add(skin);
 rest=new Float32Array(geometry.attributes.position.array);
 rebuildGarment();
-document.getElementById('assetinfo').textContent='MESH · '+count.toLocaleString()+' V / '+faces.toLocaleString()+' T / '+boundary+' OPEN EDGES';
+document.getElementById('assetinfo').textContent='MESH · '+count.toLocaleString()+' V / '+faces.toLocaleString()+' T / '+boundary+' OPEN · CENTER CALIBRATED';
 document.getElementById('loading').remove();
 }catch(err){document.getElementById('loading').textContent='载入失败 · '+err.message;console.error(err)}
 }
@@ -245,6 +304,9 @@ bind('shape',v=>{document.getElementById('shapeValue').textContent=v;updateShape
 document.getElementById('outfits').addEventListener('click',e=>{const b=e.target.closest('button[data-outfit]');if(!b)return;style=b.dataset.outfit;document.querySelectorAll('#outfits button').forEach(c=>c.classList.toggle('active',c===b));rebuildGarment()});
 document.getElementById('palette').addEventListener('click',e=>{const b=e.target.closest('button[data-color]');if(!b)return;color=new THREE.Color(b.dataset.color);document.querySelectorAll('#palette button').forEach(c=>c.classList.toggle('active',c===b));updateUniforms()});
 document.getElementById('visual').addEventListener('change',applyVisual);
+document.getElementById('front').onclick=()=>{yaw=0;pitch=.075;setCamera()};
+document.getElementById('side').onclick=()=>{yaw=Math.PI/2;pitch=.075;setCamera()};
+document.getElementById('back').onclick=()=>{yaw=Math.PI;pitch=.075;setCamera()};
 document.getElementById('mode').onclick=e=>{modeWet=!modeWet;e.target.classList.toggle('active',modeWet);e.target.textContent=modeWet?'泼水模式':'观察模式'};
 document.getElementById('wipe').onclick=()=>{stains.forEach(s=>s.set(0,0,0,0));updateUniforms()};
 document.getElementById('snapshot').onclick=()=>{renderer.render(scene,camera);const a=document.createElement('a');a.download='atelier-surface-v01.png';a.href=renderer.domElement.toDataURL('image/png');a.click()};
