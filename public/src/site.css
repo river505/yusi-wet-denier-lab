@@ -1406,9 +1406,9 @@ body.fine .pane-hint.keys {
 @media (max-width:599px) {
   body:not(.wide) #materials {
     height:min(var(--wardrobe-fun-height,260px),
-      calc(100dvh - 200px - var(--safe-b)));
+      calc(100dvh - 340px - var(--safe-b)));
     max-height:min(var(--wardrobe-fun-height,260px),
-      calc(100dvh - 200px - var(--safe-b)));
+      calc(100dvh - 340px - var(--safe-b)));
     grid-template-rows:auto minmax(0,1fr) auto;
     overflow:hidden;
     overscroll-behavior:contain;
