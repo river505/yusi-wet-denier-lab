@@ -421,7 +421,12 @@ function createEngine({ stocking }) {
     // the far leg. Share the deformed cloth geometry and length uniform so
     // this never becomes a separate animated mesh that can desynchronize.
     const outline = new THREE.Mesh(geometry, new THREE.ShaderMaterial({
-      uniforms: { lengthLimit: cloth.material.uniforms.lengthLimit },
+      // The back-face silhouette must share the toe-thong cutout.
+      // Otherwise the old solid-sock outline remains around exposed toes.
+      uniforms: {
+        lengthLimit: cloth.material.uniforms.lengthLimit,
+        toeStyle: cloth.material.uniforms.toeStyle,
+      },
       vertexShader: outlineVertex,
       fragmentShader: outlineFragment,
       transparent: true,
