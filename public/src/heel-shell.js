@@ -174,4 +174,16 @@ export function updateHeelShell(shell,posedGeometry){
   }
   geometry.attributes.position.needsUpdate=true;
   geometry.attributes.normal.needsUpdate=true;
+  // Never replace the user's preferred earlier heel scheme with a shell
+  // that has become locally inside-out at an extreme manual ankle angle.
+  // Detect real corrected triangles, not theoretical joint angle bounds.
+  let folded=0;
+  for(let j=0;j<P.length;j+=9){
+    const ax=P[j+3]-P[j],ay=P[j+4]-P[j+1],az=P[j+5]-P[j+2];
+    const bx=P[j+6]-P[j],by=P[j+7]-P[j+1],bz=P[j+8]-P[j+2];
+    const cx=ay*bz-az*by,cy=az*bx-ax*bz,cz=ax*by-ay*bx;
+    if(cx*N[j]+cy*N[j+1]+cz*N[j+2]<-1e-12&&++folded>2)
+      return false;
+  }
+  return true;
 }
