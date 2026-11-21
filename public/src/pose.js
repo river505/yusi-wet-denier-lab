@@ -211,6 +211,24 @@ function rotateAround(point, [x, y, z], rotation, weight = 1) {
   point[2] += (c + z - point[2]) * weight;
 }
 
+// Angle-weighted joints are evaluated in place. Unlike interpolating two
+// rotated positions, they preserve the rigid heel volume. Avoid allocating
+// closures per vertex: normal recovery samples each point four times.
+function rotateXWeighted(p,pivot,angle,weight){
+  if(weight<=0||Math.abs(angle)<1e-7)return;
+  const t=angle*weight,c=Math.cos(t),s=Math.sin(t);
+  const y=p[1]-pivot[1],z=p[2]-pivot[2];
+  p[1]=pivot[1]+c*y-s*z;
+  p[2]=pivot[2]+s*y+c*z;
+}
+function rotateZWeighted(p,pivot,angle,weight){
+  if(weight<=0||Math.abs(angle)<1e-7)return;
+  const t=angle*weight,c=Math.cos(t),s=Math.sin(t);
+  const x=p[0]-pivot[0],y=p[1]-pivot[1];
+  p[0]=pivot[0]+c*x-s*y;
+  p[1]=pivot[1]+s*x+c*y;
+}
+
 function makeTransform(config) {
   const pitch = xRotation((config.pitch ?? 0) * radians);
   const roll = zRotation((config.roll ?? 0) * radians);
@@ -239,15 +257,8 @@ function makeTransform(config) {
   // rotation: the interpolation scales the foot near the ankle and pinches
   // its heel when the heel angle reaches 35–55 degrees. Instead vary the
   // ANGLE, then rotate each vertex about the anatomically fixed pivot.
-  const rotateToe=(point,weight)=>{
-    const r=xRotation(toeAngle*weight);
-    rotateAround(point,toe,r);
-  };
-  const rotateAnkle=(point,weight)=>{
-    const plantar=xRotation(ankleAngle*weight);
-    const roll=zRotation(soleRoll*weight);
-    rotateAround(point,ankle,(x,y,z)=>roll(...plantar(x,y,z)));
-  };
+  // In-place elementary rotations above preserve the exact result of
+  // these composed x/z rotations without creating per-vertex closures.
 
   // On high-heel/pointed poses the original 35mm toe and 65mm ankle
   // blending intervals folded the forefoot into a visible crease.
@@ -271,11 +282,14 @@ function makeTransform(config) {
     if(z>toeStart&&y<.095){
       const toeWeight=smoothstep(toeStart,toeEnd,z)*
         (1.-smoothstep(.048,strongFootFlex?.09:.07,y));
-      if(toeWeight>0.)rotateToe(point,toeWeight);
+      if(toeWeight>0.)rotateXWeighted(point,toe,toeAngle,toeWeight);
     }
     if(y<ankleEnd){
       const ankleWeight=1.-smoothstep(ankleStart,ankleEnd,y);
-      if(ankleWeight>0.)rotateAnkle(point,ankleWeight);
+      if(ankleWeight>0.){
+        rotateXWeighted(point,ankle,ankleAngle,ankleWeight);
+        rotateZWeighted(point,ankle,soleRoll,ankleWeight);
+      }
     }
     if(y<.565)rotateAround(point,knee,flexKnee,1.-smoothstep(.415,.565,y));
     rotateAround(point,hip,swing);
