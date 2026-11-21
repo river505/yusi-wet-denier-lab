@@ -8,16 +8,20 @@ const POSES = {
   lieFlat:'平躺',lieBent:'平躺屈膝',
   lieCrossLeft:'平躺二郎腿 · 左搭右',lieCrossRight:'平躺二郎腿 · 右搭左',
   lieSideLeft:'左侧躺',lieSideRight:'右侧躺',
+  tiptoeShake:'踮脚抖腿',bendTiptoeShake:'屈膝踮脚抖腿',
 };
-const STANDING_POSES=Object.fromEntries(Object.entries(POSES).slice(0,9));
+const STANDING_POSES={
+  ...Object.fromEntries(Object.entries(POSES).slice(0,9)),
+  tiptoeShake:POSES.tiptoeShake,bendTiptoeShake:POSES.bendTiptoeShake,
+};
 const SEATED_POSES=Object.fromEntries(Object.entries(POSES).slice(9,12));
 const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(12,17));
-const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(17));
-const isMotionName=name=>Object.hasOwn(MOTION_POSES,name);
+const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(17,23));
+const isMotionName=name=>Object.hasOwn(MOTION_POSES,name)||name==='tiptoeShake'||name==='bendTiptoeShake';
 const isLyingName=name=>Object.hasOwn(LYING_POSES,name);
 const MOTION_KEYS=Object.keys(MOTION_POSES);
 const BEND_KEYS=['bendForward','bendTiptoe'];
-const AMPLITUDE_KEYS=[...MOTION_KEYS,...BEND_KEYS];
+const AMPLITUDE_KEYS=[...MOTION_KEYS,...BEND_KEYS,'tiptoeShake','bendTiptoeShake'];
 const isBendName=name=>BEND_KEYS.includes(name);
 const isAdjustableName=name=>isMotionName(name)||isBendName(name);
 const defaultAmplitudes=()=>Object.fromEntries(AMPLITUDE_KEYS.map(name=>[name,100]));
@@ -62,7 +66,10 @@ const SECRETS = {none: '无', hearts: '藏爱心', stars: '藏星星', paws: '�
 const WET_COLORS = {'': '不变', sakura: '变樱粉', mist: '变雾蓝', taro: '变香芋紫', cherry: '变正红'};
 const DENIERS = {15: '15D', 40: '40D', 70: '70D', 120: '120D', 200: '200D'};
 const clampDenier = value => Math.max(5,Math.min(200,Math.round(Number(value)||40)));
-const TOE_STYLES = { natural:'自然袜尖', reinforced:'加固袜尖', seamless:'轻薄袜尖' };
+const TOE_STYLES = {natural:'自然袜尖',reinforced:'加固袜尖',seamless:'轻薄袜尖',tabi:'夹趾袜'};
+const clampPatternDensity=value=>Math.max(20,Math.min(200,Math.round(Number(value)||100)));
+const clampPatternRandomness=value=>Math.max(0,Math.min(100,Math.round(Number(value) || 0)));
+const SCATTERED_PATTERNS=new Set(['dots','argyle','hearts','stars','paws','lace']);
 const BACKDROPS = {
   lilac: ['浅紫', '#e4dce8'], sakura: ['樱粉', '#f3d6dd'], mint: ['薄荷', '#cfe7df'],
   cream: ['奶油', '#f0e3c8'], sky: ['天蓝', '#cbdff3'], dusk: ['夜蓝', '#2a2944'],
@@ -78,7 +85,8 @@ const TABS = {
 };
 const DEFAULT_STOCKING = {
   length: 'thigh', cuff: 'lace', garter: false, material: 'sheer', denier: 40,
-  pattern: 'none', color: 'ink', secret: 'none', wetColor: null, toeStyle:'natural',
+  pattern: 'none',color:'ink',secret:'none',wetColor:null,toeStyle:'natural',
+  patternDensity:100,patternRandomness:25,
 };
 const PRESETS = [
   ['经典黑丝', {}],
@@ -173,6 +181,7 @@ function serializeLook(state) {
   const legs = state.legs.map(leg => [
     leg.length, leg.cuff, Number(leg.garter), leg.material, leg.denier, leg.pattern,
     encodeColor(leg.color), leg.secret, encodeColor(leg.wetColor) || '-', leg.toeStyle||'natural',
+    clampPatternDensity(leg.patternDensity),clampPatternRandomness(leg.patternRandomness ?? 25),
   ].join('.'));
   const amplitudes=AMPLITUDE_KEYS.map(name=>clampAmplitude(state.motionAmplitudes?.[name])).join('-');
   return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs,
@@ -195,7 +204,7 @@ function deserializeLook(hash) {
   if (version !== '1') return null;
 
   const readLeg = value => {
-    const [length, cuff, garter, material, denier, pattern, color, secret, wetColor, toeStyle='natural'] =
+    const [length, cuff, garter, material, denier, pattern, color, secret, wetColor, toeStyle='natural',density='100',randomness='25'] =
       (value || '').split('.');
     return {
       length: Object.hasOwn(STOCKING_LENGTHS, length) ? length : 'thigh',
@@ -208,6 +217,7 @@ function deserializeLook(hash) {
       secret: Object.hasOwn(SECRETS, secret) ? secret : 'none',
       wetColor: decodeColor(wetColor, COLORS),
       toeStyle: Object.hasOwn(TOE_STYLES,toeStyle) ? toeStyle : 'natural',
+      patternDensity:clampPatternDensity(density),patternRandomness:clampPatternRandomness(randomness),
     };
   };
 
@@ -278,6 +288,17 @@ export function initUI(engine) {
   const legSummary = element('div', {class:'leg-summary',id:'legSummary'}, [
     button('左腿 · 40D', {id:'legSummary0','data-leg-target':'0'}),
     button('右腿 · 40D', {id:'legSummary1','data-leg-target':'1'}),
+  ]);
+  const patternDensityInput=element('input',{id:'patternDensity',type:'range',
+    min:'20',max:'200',step:'5',value:'100','aria-label':'花纹密集度'});
+  const patternDensityValue=element('output',{id:'patternDensityValue'},['100%']);
+  const patternRandomnessInput=element('input',{id:'patternRandomness',type:'range',
+    min:'0',max:'100',step:'5',value:'25','aria-label':'图案排列随机度'});
+  const patternRandomnessValue=element('output',{id:'patternRandomnessValue'},['25%']);
+  const patternControls=element('div',{class:'pattern-controls'},[
+    row('密集度',element('div',{class:'pattern-range'},[patternDensityInput,patternDensityValue])),
+    row('随机度',element('div',{class:'pattern-range'},[patternRandomnessInput,patternRandomnessValue])),
+    note('波点、菱形、心形、星形与猫爪支持错列随机分布；图案之间保持最小间距。'),
   ]);
   const denierRange = element('input', {id:'denierRange',type:'range',min:'5',max:'200',step:'1',value:'40','aria-label':'丝袜丹尼尔数'});
   const denierNumber = element('input', {id:'denierNumber',type:'number',min:'5',max:'200',step:'1',value:'40',inputmode:'numeric','aria-label':'输入丹尼尔数'});
@@ -351,7 +372,7 @@ export function initUI(engine) {
       ])),
       materialNote,
     ],
-    pattern: [choices('pattern', PATTERNS)],
+    pattern: [choices('pattern', PATTERNS),patternControls],
     fun: [
       row('显形', choices('secret', SECRETS)),
       row('变色', choices('wetColor', WET_COLORS)),
@@ -411,6 +432,11 @@ export function initUI(engine) {
     }
     // The controls always reflect the selected leg; shared editing still
     // applies to both, preserving independent left/right material records.
+    patternDensityInput.value=String(clampPatternDensity(leg.patternDensity));
+    patternRandomnessInput.value=String(clampPatternRandomness(leg.patternRandomness ?? 25));
+    patternDensityValue.textContent=patternDensityInput.value+'%';
+    patternRandomnessValue.textContent=patternRandomnessInput.value+'%';
+    patternControls.hidden=!SCATTERED_PATTERNS.has(leg.pattern);
     const activeDenier = clampDenier(leg.denier);
     denierRange.value = String(activeDenier);
     denierNumber.value = String(activeDenier);
@@ -639,6 +665,8 @@ export function initUI(engine) {
 
   function editMaterial(key, value) {
     if (key === 'denier') value = clampDenier(value);
+    if (key === 'patternDensity') value = clampPatternDensity(value);
+    if (key === 'patternRandomness') value = clampPatternRandomness(value);
     const target = state.target;
     const legs = state.legs.map((leg, index) => {
       if (target !== '-1' && Number(target) !== index) return leg;
@@ -758,6 +786,8 @@ export function initUI(engine) {
       editMaterial(key, next || (key === 'wetColor' ? null : next));
     }
   });
+  patternDensityInput.addEventListener('input',()=>editMaterial('patternDensity',patternDensityInput.value));
+  patternRandomnessInput.addEventListener('input',()=>editMaterial('patternRandomness',patternRandomnessInput.value));
   denierRange.addEventListener('input', () => editMaterial('denier',denierRange.value));
   denierNumber.addEventListener('change', () => editMaterial('denier',denierNumber.value));
   get('#copyLegLeftToRight').addEventListener('click', () => {
