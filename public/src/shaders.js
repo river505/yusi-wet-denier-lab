@@ -151,6 +151,37 @@ export const stageFragment = /* glsl */`
   }
 `;
 
+// Dedicated two-sided skin layer: the open upper leg is not a black back-face silhouette.
+export const skinVertex = /* glsl */`
+  varying vec3 surfaceNormal;
+  varying vec3 eyeDirection;
+  void main() {
+    vec4 viewPoint = modelViewMatrix * vec4(position, 1.);
+    surfaceNormal = normalize(normalMatrix * normal);
+    eyeDirection = -viewPoint.xyz;
+    gl_Position = projectionMatrix * viewPoint;
+  }
+`;
+
+export const skinFragment = /* glsl */`
+  varying vec3 surfaceNormal;
+  varying vec3 eyeDirection;
+  void main() {
+    vec3 n = normalize(surfaceNormal);
+    if (!gl_FrontFacing) n = -n;
+    vec3 light = normalize(vec3(-.50, .67, .72));
+    vec3 fill = normalize(vec3(.62, .32, -.45));
+    float diffuse = max(dot(n, light), 0.);
+    float bounce = max(dot(n, fill), 0.);
+    float illumination = .75 + .24 * diffuse + .08 * bounce;
+    float rim = pow(1. - max(dot(n, normalize(eyeDirection)), 0.), 3.);
+    vec3 skinColor = mix(vec3(.76, .56, .53), vec3(.92, .77, .72), .62);
+    skinColor = skinColor * illumination + vec3(.025, .020, .018) * rim;
+    gl_FragColor = vec4(skinColor, 1.);
+    #include <colorspace_fragment>
+  }
+`;
+
 export const fabricVertex = /* glsl */`
   attribute vec3 restPosition;
   varying vec3 wetPoint;
@@ -215,6 +246,7 @@ export const fabricFragment = /* glsl */`
   }
   void main() {
     vec3 n = normalize(facing);
+    if (!gl_FrontFacing) n = -n;
     vec3 view = normalize(eyeDirection);
     vec3 light = normalize(vec3(-.50,.67,.72));
     float incidence = clamp(dot(n,view),0.,1.);
@@ -231,7 +263,11 @@ export const fabricFragment = /* glsl */`
     float stocking = step(h, lengthLimit + (cuff == 1. ? .0048 * (.5+.5*cos(angle*125.6637)) : 0.));
     float edge = stocking * step(lengthLimit-band,h);
     vec3 rgb = skin;
+    float garmentOpacity = 0.;
     if (stocking > 0. && skinOnly == 0.) {
+      // Optical coverage is independent of the skin layer. Wet cloth transmits more light.
+      garmentOpacity = clamp(.22 + denier * .0048 + max(0., fabric - 2.) * .10, .23, .90);
+      if (fabric >= 6.) garmentOpacity = .94;
       float dense = clamp(.41 + denier * .0037 + max(0.,fabric-2.)*.19, .41, .96);
       vec3 base = mix(skin * vec3(.86,.86,.88),dye,dense);
       base *= mix(.82,1.16,modeled);
@@ -257,10 +293,11 @@ export const fabricFragment = /* glsl */`
       if (secret > 0.) wet *= 1. - .42*shape(secret,textile);
       if (fabric >= 6.) wet = base;
       rgb = mix(base,wet,wetness);
+      garmentOpacity = mix(garmentOpacity, max(.14, garmentOpacity * .58), wetness);
       rgb += knit * mix(1.,.22,wetness);
       rgb += shine * (.035 + .12*wetness + .13*float(fabric==2.) + .34*step(6.,fabric));
       float fresnel = pow(1.-incidence,2.7);
-      rgb = mix(rgb, mix(dye,vec3(.38,.36,.46),.35),fresnel*.47);
+      rgb = mix(rgb, mix(skin, vec3(.92,.86,.84), .45), fresnel*.16);
       if (edge > 0.) {
         float offset = (lengthLimit - h) / max(band,.001);
         float detail = .49;
@@ -276,15 +313,17 @@ export const fabricFragment = /* glsl */`
         if (cuff == 3.) detail = .29+.42*pow(.5+.5*sin(angle*782.),2.);
         rgb = mix(rgb, mix(dye,vec3(.07,.055,.07),.28),detail);
       }
-      rgb = mix(rgb,vec3(.023,.022,.036),(1. - smoothstep(.02,.27,incidence))*.86);
+      // Never substitute near-black pixels for the open mesh's back-facing interior.
+      rgb = mix(rgb, mix(skin,dye,.28), (1. - smoothstep(.02,.27,incidence))*.14);
     }
     if (garter > 0. && skinOnly == 0. && h > lengthLimit && abs(fract(angle*2.+.3)-.5)<.086) {
       rgb = mix(rgb,dye,.77);
+      garmentOpacity = max(garmentOpacity, .76);
     }
     rgb *= tint;
     float fade = 1. - smoothstep(.783,.861,h);
     if (reflection > 0.) fade *= reflection*(1.-smoothstep(-.03,.34,h));
-    gl_FragColor = vec4(max(rgb,0.),fade);
+    gl_FragColor = vec4(max(rgb,0.), fade * (skinOnly > .5 ? 1. : garmentOpacity));
     #include <colorspace_fragment>
   }
 `;
