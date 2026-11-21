@@ -3,6 +3,7 @@ import { loadMesh } from './mesh.js';
 import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragment, skinVertex, stageFragment, stageVertex, panoramaVertex } from './shaders.js';
 import { initUI } from './ui.js';
 import { applyPose } from './pose.js';
+import { createSpatialEnvironment } from './environment.js';
 
 const canvas = document.getElementById('view');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -232,6 +233,8 @@ function createEngine({ stocking }) {
   panorama.frustumCulled = false;
   panorama.visible = false;
   world.add(panorama);
+  // 3D spatial scenes replace the old spherical painted floors.
+  const spatialEnvironment = createSpatialEnvironment(THREE, world);
 
   const contactTexture = radialShadow();
   const shadowGeometry = new THREE.PlaneGeometry(.31, .56);
@@ -276,11 +279,13 @@ function createEngine({ stocking }) {
     contact.position.set(.02, .002, .061);
     contact.rotation.x = -Math.PI / 2;
     contact.renderOrder = -2;
-    group.add(contact);
+    // Foot contact is a world-space decal at y=0, never attached to the
+    // elevated limb rig: attaching it to group made the shadow hover.
+    world.add(contact);
     group.scale.x = index === 0 ? 1 : -1;
     world.add(group);
     legMeshes.push(cloth);
-    return { group, skinMesh, cloth, reflection, nextStain: 0 };
+    return { group, skinMesh, cloth, reflection, contact, nextStain: 0 };
   });
 
   const droplets = [];
@@ -323,9 +328,11 @@ function createEngine({ stocking }) {
     settings.upper.value.set(customColor && environment === 'studio' ? colorway : colors[0]);
     settings.lower.value.set(colors[1]);
     if (customColor && environment === 'studio') settings.lower.value.copy(settings.upper.value).multiplyScalar(.79);
-    settings.kind.value = Math.max(0, sceneKeys.indexOf(environment));
-    backdrop.visible = environment === 'studio';
-    panorama.visible = !backdrop.visible;
+    // The stage gradient is distant only; every walkable surface is 3D at y=0.
+    settings.kind.value = 0;
+    backdrop.visible = true;
+    panorama.visible = false;
+    spatialEnvironment.setScene(environment);
     const tint = environment === 'street' ? '#c1afd2' : '#ffffff';
     const reflectAmount = { bath: .22, street: .28, pool: .12 }[environment] ?? 0;
     models.forEach(({ group, cloth, reflection }) => {
@@ -345,11 +352,13 @@ function createEngine({ stocking }) {
     const next = poses.includes(name) ? name : 'step';
     if (next === pose && models[0].cloth.geometry.hasAttribute('restPosition')) return;
     pose = next;
-    models.forEach(({ group, skinMesh, cloth, reflection }, index) => {
+    models.forEach(({ group, skinMesh, cloth, reflection, contact }, index) => {
       applyPose(skinMesh.geometry, stocking, pose, index);
       const { x, y, z, visible } = applyPose(cloth.geometry, stocking, pose, index);
       group.position.set(x, y, z);
       group.visible = visible;
+      contact.visible = visible;
+      contact.position.set(x, .0032, z + .09);
       reflection.position.set(x, -y, z);
       reflection.visible = visible && reflection.material.uniforms.reflection.value > 0;
     });
@@ -593,6 +602,7 @@ function createEngine({ stocking }) {
     lastTime = time;
     playClock += dt * (slow ? .20 : 1);
     backdropMaterial.uniforms.time.value = playClock;
+    spatialEnvironment.update(dt * (slow ? .20 : 1));
     updateCamera(dt);
     for (const pointer of pointers.values()) {
       if (!pointer.wet) continue;
@@ -617,10 +627,10 @@ function createEngine({ stocking }) {
     const margin = 28 * scale;
     ctx.fillStyle = 'rgba(47,40,56,.86)';
     ctx.font = `${Math.round(34 * scale)}px "ZCOOL XiaoWei", "Songti SC", serif`;
-    ctx.fillText('雨丝', margin, result.height - margin - 21 * scale);
+    ctx.fillText('ATELIER', margin, result.height - margin - 21 * scale);
     ctx.fillStyle = 'rgba(92,82,108,.82)';
     ctx.font = `${Math.round(13 * scale)}px system-ui, sans-serif`;
-    ctx.fillText('WET DENIER LAB  ·  newtonquan-yusi.pages.dev', margin, result.height - margin);
+    ctx.fillText('DIGITAL FABRIC STUDIO  ·  CC0 BODY / CC BY TEXTILE', margin, result.height - margin);
     return result.toDataURL('image/jpeg', .93);
   }
 
