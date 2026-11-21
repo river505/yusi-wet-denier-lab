@@ -205,7 +205,9 @@ function serializeLook(state) {
     encodeColor(state.skinTone), state.skinBrightness, amplitudes,
     state.footPitch.map(clampFootPitch).join(','),state.legSpacing||100,
     Object.values(normalizeFootMotion(state.footMotion)).join(','),
-    Object.values(normalizeLegMorph(state.legMorph)).join(',')].join('~');
+    Object.values(normalizeLegMorph(state.legMorph)).join(','),
+    clampPercent(state.footDetail,0,200),clampPercent(state.soleWrinkle,0,200,70)
+  ].join('~');
 }
 
 function deserializeLook(hash) {
@@ -213,7 +215,8 @@ function deserializeLook(hash) {
   if (!serialized) return null;
   const [version, pose, scene, backdrop, left, right = left,
     tone = 'original', brightness = '100', amps='100-100-100-100-100',
-    pitches='0,0', spacing='100',foot='100,100,100',morph='100,100,100,100'] = serialized.split('~');
+    pitches='0,0', spacing='100',foot='100,100,100',morph='100,100,100,100',
+    detail='100',wrinkles='70'] = serialized.split('~');
   const pitchParts=pitches.split(',');
   const footPitch=[clampFootPitch(pitchParts[0]),clampFootPitch(pitchParts[1])];
   const ampParts=amps.split('-');
@@ -258,6 +261,8 @@ function deserializeLook(hash) {
       .map((key,index)=>[key,foot.split(',')[index]]))),
     legMorph:normalizeLegMorph(Object.fromEntries(Object.keys(DEFAULT_LEG_MORPH)
       .map((key,index)=>[key,morph.split(',')[index]]))),
+    footDetail:clampPercent(detail,0,200),
+    soleWrinkle:clampPercent(wrinkles,0,200,70),
   };
 }
 
@@ -269,6 +274,7 @@ export function initUI(engine) {
     motionAmplitudes: defaultAmplitudes(),
     footPitch:[0,0], footTarget:'both', legSpacing:100,
     footMotion:{...DEFAULT_FOOT_MOTION},legMorph:{...DEFAULT_LEG_MORPH},
+    footDetail:100,soleWrinkle:70,
   };
   const body = document.body;
   const view = get('#view');
@@ -318,6 +324,13 @@ export function initUI(engine) {
     ...Object.values(legMorphInputs).map(control=>control.node),
     button('腿型复位',{id:'legMorphReset',class:'pill'}),
     note('腿长沿髋、膝、踝骨段调整；高度控制整体比例，粗细独立调整大腿与小腿。'),
+  ]);
+  const footDetailControl=percentControl('footDetail','脚部细节',0,200,5,100);
+  const soleWrinkleControl=percentControl('soleWrinkle','脚底褶皱',0,200,5,70);
+  const footSurfacePanel=element('div',{class:'pose-controls'},[
+    footDetailControl.node,soleWrinkleControl.node,
+    button('细节复位',{id:'footSurfaceReset',class:'pill'}),
+    note('脚部细节强化趾缝、趾甲、脚背肌腱与足跟层次；脚底褶皱独立调整前掌、足弓与足跟皮纹。'),
   ]);
   const motionToggle = button('暂停动作',{id:'motionToggle'});
   const motionSpeedInput=element('input',{id:'motionSpeed',type:'range',min:'0.5',
@@ -389,6 +402,7 @@ export function initUI(engine) {
       row('动作 / 幅度',motionControl),
       footMotionPanel,
       row('腿型设置',legMorphPanel),
+      row('脚部质感',footSurfacePanel),
       note('所有站姿、坐姿、躺姿及动态动作均使用脚面俯仰设置；左右脚可独立控制。','pane-hint keys'),
     ],
     preset: [presetChoices],
@@ -547,6 +561,10 @@ export function initUI(engine) {
       control.slider.value=String(state.legMorph[key]);
       control.output.textContent=state.legMorph[key]+'%';
     }
+    footDetailControl.slider.value=String(state.footDetail);
+    footDetailControl.output.textContent=state.footDetail+'%';
+    soleWrinkleControl.slider.value=String(state.soleWrinkle);
+    soleWrinkleControl.output.textContent=state.soleWrinkle+'%';
     syncChoices(materials, 'target', state.target);
     foot.classList.toggle('no-target', state.tab === 'pose');
     const inactive = ['velvet', 'cotton', 'latex'].includes(leg.material);
@@ -794,6 +812,10 @@ export function initUI(engine) {
       state.legSpacing=look.legSpacing;
       state.footMotion=look.footMotion;
       state.legMorph=look.legMorph;
+      state.footDetail=look.footDetail;
+      state.soleWrinkle=look.soleWrinkle;
+      engine.setFootDetail(state.footDetail/100);
+      engine.setSoleWrinkle(state.soleWrinkle/100);
       engine.setLegSpacing(state.legSpacing);
       engine.setFootMotion(Object.fromEntries(Object.entries(state.footMotion)
         .map(([key,value])=>[key,value/100])));
@@ -974,6 +996,21 @@ export function initUI(engine) {
     state.legMorph={...DEFAULT_LEG_MORPH};
     engine.setLegMorph(Object.fromEntries(Object.entries(state.legMorph)
       .map(([key,value])=>[key,value/100])));
+    syncWardrobe();
+  });
+  footDetailControl.slider.addEventListener('input',()=>{
+    state.footDetail=clampPercent(footDetailControl.slider.value,0,200);
+    footDetailControl.output.textContent=state.footDetail+'%';
+    engine.setFootDetail(state.footDetail/100);
+  });
+  soleWrinkleControl.slider.addEventListener('input',()=>{
+    state.soleWrinkle=clampPercent(soleWrinkleControl.slider.value,0,200,70);
+    soleWrinkleControl.output.textContent=state.soleWrinkle+'%';
+    engine.setSoleWrinkle(state.soleWrinkle/100);
+  });
+  get('#footSurfaceReset').addEventListener('click',()=>{
+    state.footDetail=100;state.soleWrinkle=70;
+    engine.setFootDetail(1);engine.setSoleWrinkle(.7);
     syncWardrobe();
   });
   motionAmplitudeInput.addEventListener('input',()=>{
