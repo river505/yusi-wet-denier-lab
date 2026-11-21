@@ -182,7 +182,7 @@ function bakeFloorShadow(models) {
   return new THREE.CanvasTexture(image);
 }
 
-function createEngine({ stocking, skin }) {
+function createEngine({ stocking }) {
   const renderer = new THREE.WebGLRenderer({
     canvas, antialias: true, alpha: false, preserveDrawingBuffer: true,
     powerPreference: mobilePointer ? 'default' : 'high-performance',
@@ -246,9 +246,10 @@ function createEngine({ stocking, skin }) {
   const legMeshes = [];
   const models = [0, 1].map(index => {
     const group = new THREE.Group();
-    // Separate inner skin from the outer textile instead of drawing a black back-side shell.
-    // The skin's reverse faces remain illuminated when the camera looks into the open leg.
-    const skinMesh = new THREE.Mesh(skin.clone(), new THREE.ShaderMaterial({
+    // Derive a full-length inner-skin surface from the continuous stocking rest mesh.
+    // The supplied 'skin' GLB mesh covers only the upper thigh, leaving a gap below it.
+    // The skin shader recesses its vertices slightly so cloth stays outside and anti-z-fights.
+    const skinMesh = new THREE.Mesh(stocking.clone(), new THREE.ShaderMaterial({
       vertexShader: skinVertex, fragmentShader: skinFragment,
       side: THREE.DoubleSide, depthWrite: true,
     }));
@@ -345,7 +346,7 @@ function createEngine({ stocking, skin }) {
     if (next === pose && models[0].cloth.geometry.hasAttribute('restPosition')) return;
     pose = next;
     models.forEach(({ group, skinMesh, cloth, reflection }, index) => {
-      applyPose(skinMesh.geometry, skin, pose, index);
+      applyPose(skinMesh.geometry, stocking, pose, index);
       const { x, y, z, visible } = applyPose(cloth.geometry, stocking, pose, index);
       group.position.set(x, y, z);
       group.visible = visible;
