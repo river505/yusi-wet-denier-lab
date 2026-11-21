@@ -35,7 +35,7 @@ const defaultLeg = { length: 'thigh', cuff: 'lace', material: 'sheer', denier: 4
 const restTarget = new THREE.Vector3(0, .43, .035);
 const maxStains = 24;
 const poses = ['single', 'together', 'step', 'crossed', 'tiptoe', 'point', 'pigeon',
-  'bendForward', 'bendTiptoe', 'tiptoeShake', 'bendTiptoeShake', 'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick',
+  'bendForward', 'bendTiptoe', 'tiptoeShake', 'bendTiptoeShake', 'pigeonTiptoeShake', 'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick',
   'lieFlat', 'lieBent', 'lieCrossLeft', 'lieCrossRight', 'lieSideLeft', 'lieSideRight', 'lieSpread'];
 
 function createSound() {
@@ -493,7 +493,7 @@ function createEngine({ stocking }) {
   let motionPlaying = true, motionSpeed = 1, motionAmplitude = 1;
   const footPitch = [0,0]; // Per-leg ankle pitch in degrees, applies to every pose.
   let legSpacing = 1; // Distance between bilateral hip origins, relative to pose default.
-  const motionHz = {kick:.85,walk:1.18,run:1.85,sitBounce:2.5,sitCrossKick:1.05,tiptoeShake:3.0,bendTiptoeShake:3.6};
+  const motionHz = {kick:.85,walk:1.18,run:1.85,sitBounce:2.5,sitCrossKick:1.05,tiptoeShake:3.0,bendTiptoeShake:3.6,pigeonTiptoeShake:3.25};
   let width = 1;
   let height = 1;
   let projectionLeft = 0;
