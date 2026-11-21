@@ -258,10 +258,11 @@ function createEngine({ stocking }) {
       vertexShader: skinVertex, fragmentShader: skinFragment,
       // Skin opacity must actually blend with the room; otherwise the
       // GLSL alpha gradient still writes an opaque cut edge into the depth buffer.
-      // Rendering the tube's backfaces makes the open top look like an
-      // opaque fleshy plug when seen from above. Render only the external
-      // surface; the feathered alpha provides the visual termination.
-      transparent: true, depthWrite: false, side: THREE.FrontSide,
+      // OPAQUE depth occluder. Alpha-to-coverage resolves the small feathered
+      // cutaway using MSAA sample coverage rather than transparent object
+      // sorting, so the near leg correctly hides the far leg.
+      transparent: false, depthTest: true, depthWrite: true,
+      alphaToCoverage: true, side: THREE.FrontSide,
     }));
     skinMesh.renderOrder = 0;
     group.add(skinMesh);
@@ -321,6 +322,7 @@ function createEngine({ stocking }) {
   let height = 1;
   let projectionLeft = 0;
   let verticalProjectionOffset = 0;
+  let belowGround = false;
   let lastTime = performance.now();
   let lastInput = lastTime;
 
@@ -345,7 +347,7 @@ function createEngine({ stocking }) {
     models.forEach(({ group, cloth, reflection }) => {
       cloth.material.uniforms.tint.value.set(tint);
       reflection.material.uniforms.reflection.value = reflectAmount;
-      reflection.visible = group.visible && reflectAmount > 0;
+      reflection.visible = group.visible && !belowGround && reflectAmount > 0;
     });
     floorShade.material.color.set({bath: '#84929f', pool: '#8a877f', street: '#252333'}[environment] ?? '#9a88a8');
   }
@@ -364,10 +366,11 @@ function createEngine({ stocking }) {
       const { x, y, z, visible } = applyPose(cloth.geometry, stocking, pose, index);
       group.position.set(x, y, z);
       group.visible = visible;
-      contact.visible = visible;
+      contact.visible = visible && !belowGround;
       contact.position.set(x, .0032, z + .09);
       reflection.position.set(x, -y, z);
-      reflection.visible = visible && reflection.material.uniforms.reflection.value > 0;
+      reflection.visible = visible && !belowGround &&
+        reflection.material.uniforms.reflection.value > 0;
     });
     if (!shadowCache.has(pose)) shadowCache.set(pose, bakeFloorShadow(models));
     floorShade.material.map = shadowCache.get(pose);
@@ -426,6 +429,22 @@ function createEngine({ stocking }) {
     liveView.range += (view.range - liveView.range) * follow;
     liveView.target.lerp(view.target, follow);
     orient(camera, liveView);
+    // The real ground plane is at y=0. Crossing it from below must not
+    // expose floor undersides or inverted architecture. Hysteresis prevents
+    // blinking around the threshold during spring-damped camera movement.
+    const nextBelowGround = belowGround
+      ? camera.position.y < .035
+      : camera.position.y < -.025;
+    if (nextBelowGround !== belowGround) {
+      belowGround = nextBelowGround;
+      spatialEnvironment.setUnderground(belowGround);
+      floorShade.visible = !belowGround;
+      models.forEach(({ contact, reflection, group }) => {
+        contact.visible = !belowGround && group.visible;
+        reflection.visible = !belowGround && group.visible &&
+          reflection.material.uniforms.reflection.value > 0;
+      });
+    }
     const rect = canvas.getBoundingClientRect();
     const isWide = document.body.classList.contains('wide');
     const cssX = getComputedStyle(document.documentElement).getPropertyValue('--stage-x');
