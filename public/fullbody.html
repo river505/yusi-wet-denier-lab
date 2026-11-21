@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eeeaf1">
+<meta name="description" content="ATELIER 全身模特工作室。MakeHuman CC0 全身网格、可调身材脸部发型、基础服装与丝袜材质。">
+<title>ATELIER · 全身模特工作室</title>
+<link rel="stylesheet" href="./src/fullbody.css">
+</head>
+<body>
+<canvas id="fullbodyCanvas" aria-label="可交互三维女性模特"></canvas>
+<header class="fb-top">
+  <div class="fb-brand"><strong>ATELIER</strong><small>FULL BODY STUDIO</small></div>
+  <nav class="fb-mode" aria-label="工作区">
+    <a href="./index.html">腿部实验室</a><a href="./fullbody.html" aria-current="page">全身工作室</a>
+  </nav>
+  <button id="fbToggle" aria-controls="fbPanel" aria-expanded="false">调节</button>
+</header>
+<aside id="fbPanel" class="fb-panel" aria-label="模特调节面板">
+  <div class="fb-panel-header"><div><b>模特编辑</b><small>MakeHuman · Female Mannequin</small></div><button id="fbClose" aria-label="关闭面板">×</button></div>
+  <nav id="fbTabs" class="fb-tabs" aria-label="参数分类">
+    <button data-tab="figure" class="active">身材</button><button data-tab="face">捏脸</button>
+    <button data-tab="hair">捏发</button><button data-tab="outfit">套装</button>
+    <button data-tab="fabric">织物</button><button data-tab="pose">姿势</button>
+    <button data-tab="scene">场景</button>
+  </nav>
+  <div id="fbControls" class="fb-controls"></div>
+  <div class="fb-panel-foot"><button id="fbSave">保存设定</button><button id="fbResetAppearance">恢复默认</button></div>
+</aside>
+<div class="fb-hint" id="fbHint" role="status">正在加载 MakeHuman 全身网格…</div>
+<footer class="fb-dock" aria-label="全身模式快捷操作">
+  <button id="fbResetCamera">重置视角</button><button id="fbSplash">泼水</button>
+  <button id="fbRain" aria-pressed="false">细雨</button><button id="fbDry">擦干</button>
+  <button id="fbPhoto">拍照</button><button id="fbOpenControls">编辑模特</button>
+</footer>
+<script type="module" src="./src/fullbody.js"></script>
+</body>
+</html>
