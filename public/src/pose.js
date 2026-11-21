@@ -24,6 +24,8 @@ const poses = {
   tiptoeShake: [{ x:.090 }, { x:.090 }],
   bendTiptoeShake: [{ x:.095 }, { x:.095 }],
   pigeonTiptoeShake: [{ x:.095 }, { x:.095 }],
+  pigeonShake: [{ x:.095 }, { x:.095 }],
+  stepShake: [{ x:.085 }, { x:.092 }],
   // Front toe touches the ground; rear foot is a stable load-bearing step.
   stepPoint: [
     {x:.085,z:.058,yaw:13,roll:-4,pitch:-17,knee:12,ankle:34,toe:-24},
@@ -60,7 +62,9 @@ const poses = {
   lieSideRight: [{x:.095,pitch:-97,knee:20,roll:-65,yaw:-5,shiftY:-.68},
     {x:.095,pitch:-92,knee:7,roll:-65,yaw:-8,shiftY:-.77}],
 };
-const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick','tiptoeShake','bendTiptoeShake','pigeonTiptoeShake','stepPointShake']);
+const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick',
+  'tiptoeShake','bendTiptoeShake','pigeonTiptoeShake','stepPointShake',
+  'pigeonShake','stepShake']);
 const lyingNames=new Set(['lieFlat','lieBent','lieCrossLeft','lieCrossRight','lieSideLeft','lieSideRight','lieSpread']);
 const seatedNames=new Set(['sitNatural','sitReach','sitCross','sitBounce','sitCrossKick']);
 const standingBendNames=new Set(['bendForward','bendTiptoe']);
@@ -91,6 +95,27 @@ function motionConfigs(name, phase, amplitude=1, footMotion=defaultFootMotion) {
   const opposite=Math.sin(theta+Math.PI);
   const bend=v=>Math.max(0,v);
   const seated=poses.sitNatural;
+  if(name==='pigeonShake'||name==='stepShake'){
+    // These are genuine flat-footed tremors, not aliases for the raised-heel
+    // pigeon and toe-pointed staggered animations.
+    const inward=name==='pigeonShake';
+    const neutral=inward?poses.pigeon:poses.step;
+    const heelControl=Math.max(0,Math.min(2,Number(footMotion.heel??1)));
+    return neutral.map((cfg,i)=>{
+      // Staggered gait: front leg trembles while the rear stabilizes.
+      if(!inward&&i===1)return {...cfg};
+      const t=theta+i*.34;
+      const wobble=Math.sin(t);
+      const smallHeel=(inward?3.8:5.)*amp*heelControl*
+        (.5-.5*Math.cos(t));
+      return {...cfg,
+        knee:Math.max(1,(cfg.knee||0)+(inward?3.8:5.2)*amp*wobble),
+        pitch:(cfg.pitch||0)-(inward?1.4:1.7)*amp*wobble,
+        heel:smallHeel,
+        roll:(cfg.roll||0)+(inward?.4:.25)*amp*Math.sin(t+.8),
+      };
+    });
+  }
   if(name==='tiptoeShake'||name==='bendTiptoeShake'||name==='pigeonTiptoeShake'||name==='stepPointShake') {
     const bent=name==='bendTiptoeShake';
     const inward=name==='pigeonTiptoeShake';
@@ -208,10 +233,21 @@ function makeTransform(config) {
     ? 0
     : Math.atan2(-swing(1, 0, 0)[1], swing(...flexKnee(0, 1, 0))[1]);
   const heel = config.heel ?? 0;
-  const plantar = xRotation(solePitch + (heel + (config.ankle ?? 0)) * radians);
-  const invert = zRotation(soleRoll);
-  const flexAnkle = (x, y, z) => invert(...plantar(x, y, z));
-  const flexToe = xRotation(((config.toe ?? 0) - heel) * radians);
+  const ankleAngle=solePitch+(heel+(config.ankle??0))*radians;
+  const toeAngle=((config.toe??0)-heel)*radians;
+  // Weighted point blending of two rotated mesh locations is not a true
+  // rotation: the interpolation scales the foot near the ankle and pinches
+  // its heel when the heel angle reaches 35–55 degrees. Instead vary the
+  // ANGLE, then rotate each vertex about the anatomically fixed pivot.
+  const rotateToe=(point,weight)=>{
+    const r=xRotation(toeAngle*weight);
+    rotateAround(point,toe,r);
+  };
+  const rotateAnkle=(point,weight)=>{
+    const plantar=xRotation(ankleAngle*weight);
+    const roll=zRotation(soleRoll*weight);
+    rotateAround(point,ankle,(x,y,z)=>roll(...plantar(x,y,z)));
+  };
 
   // On high-heel/pointed poses the original 35mm toe and 65mm ankle
   // blending intervals folded the forefoot into a visible crease.
@@ -219,19 +255,23 @@ function makeTransform(config) {
   // Normal walking/standing and the neutral GLB remain pixel-identical.
   const strongFootFlex=Math.abs(heel)+Math.abs(config.toe??0)+
     Math.abs(config.ankle??0)>20;
-  const toeStart=strongFootFlex?.107:.12;
-  const toeEnd=strongFootFlex?.190:.155;
-  const ankleStart=strongFootFlex?.083:.06;
-  const ankleEnd=strongFootFlex?.163:.125;
+  const toeStart=strongFootFlex?.110:.12;
+  const toeEnd=strongFootFlex?.190:.160;
+  // Keep the heel and talus below y=.10 rigid, distributing the ankle
+  // articulation into the lower shin instead of folding the calcaneus.
+  const ankleStart=strongFootFlex?.105:.088;
+  const ankleEnd=strongFootFlex?.177:.155;
   return (x, y, z) => {
     const point=[x,y,z];
     if(z>toeStart&&y<.095){
-      const heelWeight=smoothstep(toeStart,toeEnd,z)*
+      const toeWeight=smoothstep(toeStart,toeEnd,z)*
         (1.-smoothstep(.048,strongFootFlex?.09:.07,y));
-      rotateAround(point,toe,flexToe,heelWeight);
+      if(toeWeight>0.)rotateToe(point,toeWeight);
     }
-    if(y<ankleEnd)rotateAround(point,ankle,flexAnkle,
-      1.-smoothstep(ankleStart,ankleEnd,y));
+    if(y<ankleEnd){
+      const ankleWeight=1.-smoothstep(ankleStart,ankleEnd,y);
+      if(ankleWeight>0.)rotateAnkle(point,ankleWeight);
+    }
     if(y<.565)rotateAround(point,knee,flexKnee,1.-smoothstep(.415,.565,y));
     rotateAround(point,hip,swing);
     return point;
@@ -301,7 +341,8 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1,
   // not its own lowest moving foot vertex.
   const supportHeight = footLevel - soleHeight(vertices, second);
   const toeSupported=name==='tiptoeShake'||name==='bendTiptoeShake'
-    ||name==='pigeonTiptoeShake'||name==='stepPointShake';
+    ||name==='pigeonTiptoeShake'||name==='stepPointShake'
+    ||name==='pigeonShake'||name==='stepShake';
   const reference=toeSupported?motionConfigs(name,0,amplitude,footMotion):null;
   if(name==='stepPointShake')reference[0]={...reference[0],knee:stepPointKnee};
   const toeContact=[0,.022,.185];
@@ -310,7 +351,8 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1,
     let y=Number.isFinite(configs[leg].shiftY)?configs[leg].shiftY:
       name==='kick'?supportHeight:footLevel-soleHeight(vertices,transform)+(configs[leg].lift||0);
     let z=configs[leg].z??0;
-    if(toeSupported && (name!=='stepPointShake'||leg===0)){
+    if(toeSupported&&(
+      (name!=='stepPointShake'&&name!=='stepShake')||leg===0)){
       const referenceTransform=makeTransform({...reference[leg],followShin:false,
         ankle:(reference[leg].ankle||0)+(Number(footPitch[leg])||0)});
       const currentToe=transform(...toeContact);
