@@ -630,11 +630,12 @@ function createEngine({ stocking }) {
     // dimming while leaving the actual pigment hue untouched.
     const tint=environment==='street'?'#e5e5e5':'#ffffff';
     const reflectAmount = { bath: .22, street: .28, pool: .12 }[environment] ?? 0;
-    models.forEach(({ group, cloth, reflection }) => {
+    models.forEach(({group,cloth,reflection},index)=>{
       cloth.material.uniforms.tint.value.set(tint);
-      reflection.material.uniforms.reflection.value = reflectAmount;
-      reflection.visible = group.visible && !belowGround &&
-        !isMotionPose(pose) && !isSeatedPose(pose) && reflectAmount > 0;
+      reflection.material.uniforms.reflection.value=reflectAmount;
+      reflection.visible=group.visible&&!belowGround&&
+        !heelShellNeeded(index)&&!isMotionPose(pose)&&
+        !isSeatedPose(pose)&&reflectAmount>0;
     });
     floorShade.material.color.set({bath: '#84929f', pool: '#8a877f', street: '#252333'}[environment] ?? '#9a88a8');
   }
