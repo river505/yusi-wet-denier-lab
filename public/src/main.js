@@ -170,7 +170,9 @@ function bakeFloorShadow(models) {
   }
 
   const ctx = image.getContext('2d');
-  ctx.filter = 'blur(3px)';
+  // Soft penumbra: keep the tight foot-contact decal while broad cast shadows
+  // lose the hard cardboard-cutout outline.
+  ctx.filter = 'blur(8px)';
   ctx.drawImage(raw, 0, 0);
   ctx.filter = 'none';
   ctx.globalCompositeOperation = 'destination-in';
@@ -240,7 +242,7 @@ function createEngine({ stocking }) {
   const shadowGeometry = new THREE.PlaneGeometry(.31, .56);
   const shadowCache = new Map();
   const floorShade = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 2), new THREE.MeshBasicMaterial({
-    color: '#9a88a8', transparent: true, opacity: .52, depthWrite: false,
+    color: '#9a88a8', transparent: true, opacity: .34, depthWrite: false,
   }));
   floorShade.position.set(.425, .001, -.55);
   floorShade.rotation.x = -Math.PI / 2;
