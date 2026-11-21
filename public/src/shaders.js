@@ -236,8 +236,11 @@ export const skinFragment = /* glsl */`
     // feathering toward white at the top, independently of skin swatches.
     float edgeFade = 1. - smoothstep(.783,.861,restSurface.y);
     if (!gl_FrontFacing) {
-      float whiteRamp = smoothstep(.70,.854,restSurface.y);
-      skinColor = mix(vec3(.82,.68,.67),vec3(1.0),whiteRamp);
+      // Delay the white part until the fade is already underway. This
+      // preserves the requested white interior but prevents a bright,
+      // opaque-looking circular cap at the top of each thigh.
+      float whiteRamp = smoothstep(.758,.865,restSurface.y);
+      skinColor = mix(vec3(.82,.68,.67),vec3(.995,.993,.993),whiteRamp);
     }
     gl_FragColor = vec4(skinColor, edgeFade);
     #include <colorspace_fragment>
