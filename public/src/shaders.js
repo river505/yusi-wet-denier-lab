@@ -478,8 +478,9 @@ export const fabricFragment = /* glsl */`
         density:sqrt(density);
       printUV=motifGrid*(metricMotif?printedScale:1.);
     }
-    float knit = (hash(floor(vec2(angle*1400.,h*1500.))) - .5) * .019;
-    float shine = pow(max(0.,dot(n,normalize(light+view))),mix(25.,85.,step(1.5,fabric)));
+    float textureGrain=hash(floor(vec2(angle*1400.,h*1500.)))-.5;
+    float knit=textureGrain*(fabric==5.?.052:
+      fabric==4.?.034:fabric==1.?.021:.008);
     float stocking = step(h, lengthLimit + (cuff == 1. ? .0048 * (.5+.5*cos(angle*125.6637)) : 0.));
     float edge = stocking * step(lengthLimit-band,h);
     vec3 rgb = skin;
@@ -494,42 +495,69 @@ export const fabricFragment = /* glsl */`
       // mesh is a second skin mix, washing charcoal into opaque grey.
       garmentOpacity=1.;
       float dense=clamp(.30+.66*(1.-exp(-d/68.)),.33,.96);
+      if(fabric==0.)dense*=.94;
+      if(fabric==1.)dense=min(.98,dense*1.095);
+      if(fabric==2.)dense=min(.98,dense*1.035);
       if(fabric>=4.)dense=.96;
-      vec3 base = mix(skin * vec3(.86,.86,.88),dye,dense);
+      vec3 base=mix(skin*vec3(.86,.86,.88),dye,dense);
       base *= mix(.82,1.16,modeled);
       float print = shape(pattern,printUV);
       if (pattern == 3.) base = mix(skin,base,print);
       else if (pattern == 4.) base = mix(base, vec3(.81,.80,.85)*shade,print*.76);
       else base *= 1. - .42 * print;
-      float wetness = 0.;
-      for (int i = 0; i < 24; i++) {
-        vec4 mark = stains[i];
-        if (mark.w <= 0.) continue;
-        vec3 delta = wetPoint-mark.xyz;
-        float radius = mark.w;
-        float ripple = .86+.14*sin(dot(localPoint,vec3(107.,146.,82.)));
-        // Diffuse wet front: soften the abrupt bright patches without losing
-        // local irregularity or the time-dependent water streaks.
-        float blob = 1. - smoothstep(radius*.48,radius*(1.10 + .09*ripple),length(delta));
-        float meander = sin(delta.y*56.+mark.x*45.)*.006;
-        float drip = 1.-smoothstep(radius*.06+.002,radius*.12+.004,length(vec2(delta.x+meander,delta.z*.66)));
-        drip *= smoothstep(-radius*4.,-radius*.55,delta.y) * (1.-step(0.,delta.y));
-        wetness = max(wetness, max(blob,drip*.65));
+      float wetness=0.;
+      float rivulet=0.;
+      for(int i=0;i<24;i++){
+        vec4 mark=stains[i];
+        if(mark.w<=0.)continue;
+        vec3 delta=wetPoint-mark.xyz;
+        float radius=mark.w;
+        float ripple=.90+.10*sin(dot(localPoint,vec3(107.,146.,82.)));
+        float blob=1.-smoothstep(radius*.52,
+          radius*(1.09+.10*ripple),length(delta));
+        // Gravity-directed, narrow wet streaks with slight wandering.
+        float meander=.0032*sin(delta.y*48.+mark.x*71.+time*.9);
+        float width=length(vec2(delta.x+meander,delta.z*.56));
+        float stream=1.-smoothstep(radius*.025+.001,
+                                   radius*.076+.0028,width);
+        stream*=smoothstep(-radius*3.5,-radius*.40,delta.y)*
+                (1.-step(0.,delta.y));
+        rivulet=max(rivulet,stream);
+        wetness=max(wetness,max(blob,stream*.78));
       }
-      vec3 wet = mix(base*.61,skin,.81 - .27*step(3.5,fabric));
-      wet = mix(wet,wetDye,step(.001,dot(wetDye,wetDye))*.72);
-      if (secret > 0.) wet *= 1. - .42*shape(secret,printUV);
-      if (fabric >= 6.) wet = base;
-      rgb = mix(base,wet,wetness);
+      // Absorbent yarn darkens; hydrophobic latex gains a water film
+      // without falsely showing soaked, transparent rubber.
+      float absorb=fabric==5.?1.5:fabric==4.?1.24:
+        fabric==1.?1.08:fabric==2.?.58:fabric==3.?.70:
+        fabric==6.?.06:1.0;
+      vec3 soaked=base*(1.-.19*min(absorb,1.6));
+      if(fabric<4.)soaked=mix(soaked,skin,
+        clamp(.20*(1.-dense)*absorb,0.,.25));
+      if(fabric==6.)soaked=base;
+      if(dot(wetDye,wetDye)>.001)soaked=mix(soaked,wetDye,.66);
+      if(secret>0.)soaked*=1.-.42*shape(secret,printUV);
+      rgb=mix(base,soaked,wetness);
+      float wetBoundary=smoothstep(.12,.30,wetness)*
+        (1.-smoothstep(.76,.94,wetness));
+      rgb*=1.-wetBoundary*(.04+.035*min(absorb,1.));
+      float waterHalf=max(0.,dot(n,normalize(light+view)));
+      rgb+=vec3(.90,.95,1.)*pow(waterHalf,94.)*wetness*
+        (.12+.07*(1.-min(absorb,1.)));
+      rgb+=vec3(.75,.84,.94)*wetBoundary*pow(waterHalf,40.)*.034;
+      rgb+=vec3(.87,.91,1.)*rivulet*pow(waterHalf,65.)*.08;
       // Local wetness changes the fibre colour and gloss, not base
       // opacity: keep the original garment silhouette opaque.
       // Local toe-groove contrast follows the real mesh, and is partly hidden
       // by thicker hosiery. Reinforced toes add a separate graduated toe cap.
-      float toeCrease = toeGrooves(localPoint);
-      float toeRegion = smoothstep(.130,.181,localPoint.z)
-                      * (1.-smoothstep(.040,.069,localPoint.y));
-      float detailStrength = mix(.14,.055,clamp(d/200.,0.,1.));
-      rgb *= 1.-detailStrength*toeCrease;
+      float toeCrease=toeGrooves(localPoint);
+      float toeRegion=smoothstep(.130,.181,localPoint.z)*
+        (1.-smoothstep(.040,.069,localPoint.y));
+      float detailStrength=mix(.14,.055,clamp(d/200.,0.,1.));
+      float tendon=footTendonRidges(localPoint);
+      float folds=soleFoldRidges(localPoint);
+      rgb*=1.-detailStrength*footDetail*toeCrease
+        -.029*footDetail*tendon*(1.-dense*.4)
+        -.068*soleWrinkle*folds*(1.-dense*.42);
       if (fabric < 4.) {
         if (toeStyle > .5 && toeStyle < 1.5) {
           // Reinforcement follows the top of the original toe volume instead
@@ -552,15 +580,34 @@ export const fabricFragment = /* glsl */`
                       (1.-smoothstep(.85,1.,cover));
         rgb=mix(rgb,dye*.72,binding*.28);
       }
-      rgb += knit * mix(1.,.22,wetness);
-      // Broad cloth fibre sheen plus tighter wet and glossy highlights.
-      // Analytic light is evaluated in view-space from deformed normals.
-      float glossStyle=float(fabric==2.);
-      float pearlStyle=float(fabric==3.);
-      float clearcoat=.065+.15*wetness+.12*glossStyle
-                       +.09*pearlStyle+.34*step(6.,fabric);
-      float broadSheen=pow(max(0.,dot(n,normalize(light+view))),14.);
-      rgb+=shine*clearcoat+broadSheen*(.030+.075*wetness+.030*glossStyle);
+      rgb+=knit*mix(1.,.24,wetness);
+      // Seven fibre classes: diffuse cotton and matte, velvet nap,
+      // silk filament sheen, pearlescent fibres, and sharp latex gloss.
+      float specPower=38.,specGain=.085,sheenGain=.043,rimGain=.11;
+      if(fabric==1.){specPower=15.;specGain=.016;sheenGain=.018;rimGain=.055;}
+      if(fabric==2.){specPower=80.;specGain=.255;sheenGain=.072;rimGain=.17;}
+      if(fabric==3.){specPower=59.;specGain=.148;sheenGain=.13;rimGain=.17;}
+      if(fabric==4.){specPower=13.;specGain=.023;sheenGain=.135;rimGain=.12;}
+      if(fabric==5.){specPower=11.;specGain=.009;sheenGain=.018;rimGain=.035;}
+      if(fabric==6.){specPower=145.;specGain=.41;sheenGain=.037;rimGain=.255;}
+      float keyHalf=max(0.,dot(n,normalize(light+view)));
+      float fillHalf=max(0.,dot(n,normalize(fillLight+view)));
+      float grazing=pow(1.-incidence,2.4);
+      float specular=pow(keyHalf,specPower)*specGain+
+        pow(fillHalf,specPower*.73)*specGain*.21;
+      float fibreSheen=pow(keyHalf,12.)*sheenGain+
+        grazing*sheenGain*(fabric==4.?1.5:.36);
+      vec3 specTint=fabric==3.?vec3(1.,.91,.97):
+        fabric==6.?vec3(.92,.965,1.):vec3(1.,.97,.95);
+      rgb+=specTint*(specular+fibreSheen);
+      float wetCoat=pow(keyHalf,118.)*wetness*
+        (fabric==6.?.24:fabric==2.?.15:.105);
+      rgb+=vec3(.94,.97,1.)*wetCoat;
+      if(fabric==3.){
+        vec3 iridescence=mix(vec3(1.,.82,.92),vec3(.81,.92,1.),
+          .5+.5*sin(incidence*10.+h*17.));
+        rgb+=iridescence*(.026+.044*grazing);
+      }
       if (fabric == 3.) {
         // Pearl glints must be visible when DRY. The earlier 172x290
         // frequency with 2% rare cells fell below a phone pixel and was
@@ -596,8 +643,8 @@ export const fabricFragment = /* glsl */`
         rgb += vec3(.90,.84,.88)*bead*wetness*.17;
       }
       float fresnel=pow(1.-incidence,2.7);
-      // Keep broad fibre sheen, but avoid a near-white grazing rim.
-      rgb=mix(rgb,mix(dye,vec3(.35,.32,.39),.26),fresnel*.21);
+      rgb=mix(rgb,mix(dye,vec3(.35,.32,.39),.26),
+        fresnel*rimGain);
       if (edge > 0.) {
         float offset = (lengthLimit - h) / max(band,.001);
         float detail = .49;
