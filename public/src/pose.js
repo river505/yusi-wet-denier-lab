@@ -24,6 +24,12 @@ const poses = {
   tiptoeShake: [{ x:.090 }, { x:.090 }],
   bendTiptoeShake: [{ x:.095 }, { x:.095 }],
   pigeonTiptoeShake: [{ x:.095 }, { x:.095 }],
+  // Front toe touches the ground; rear foot is a stable load-bearing step.
+  stepPoint: [
+    {x:.085,z:.058,yaw:13,roll:-4,pitch:-17,knee:12,ankle:34,toe:-24},
+    {x:.092,z:-.038,yaw:8,roll:-.5,pitch:2.5,knee:3},
+  ],
+  stepPointShake: [{x:.085}, {x:.092}],
   // A seat height of 0.57 m gives a hip at y~0.57 and bent legs below it.
   sitNatural: [{ x:.095, pitch:-79, knee:84, yaw:7, roll:-2, shiftY:-.32 },
     { x:.095, pitch:-81, knee:86, yaw:6, roll:2, shiftY:-.32 }],
@@ -54,7 +60,7 @@ const poses = {
   lieSideRight: [{x:.095,pitch:-97,knee:20,roll:-65,yaw:-5,shiftY:-.68},
     {x:.095,pitch:-92,knee:7,roll:-65,yaw:-8,shiftY:-.77}],
 };
-const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick','tiptoeShake','bendTiptoeShake','pigeonTiptoeShake']);
+const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick','tiptoeShake','bendTiptoeShake','pigeonTiptoeShake','stepPointShake']);
 const lyingNames=new Set(['lieFlat','lieBent','lieCrossLeft','lieCrossRight','lieSideLeft','lieSideRight','lieSpread']);
 const seatedNames=new Set(['sitNatural','sitReach','sitCross','sitBounce','sitCrossKick']);
 const standingBendNames=new Set(['bendForward','bendTiptoe']);
@@ -75,7 +81,8 @@ function standingBendConfigs(name, amplitude=1) {
     {x:.095,yaw:5,roll:1.8,pitch:hipAngle+1,knee:kneeAngle-2,heel:heelAngle},
   ];
 }
-function motionConfigs(name, phase, amplitude=1) {
+const defaultFootMotion={lateral:1,forward:1,heel:1};
+function motionConfigs(name, phase, amplitude=1, footMotion=defaultFootMotion) {
   // One explicit amplitude parameter scales *excursions*, not the joint
   // neutral pose. Both legs keep their anatomical hip/knee pivot positions.
   const amp=Math.max(.2,Math.min(2,Number(amplitude)||1));
@@ -84,22 +91,29 @@ function motionConfigs(name, phase, amplitude=1) {
   const opposite=Math.sin(theta+Math.PI);
   const bend=v=>Math.max(0,v);
   const seated=poses.sitNatural;
-  if(name==='tiptoeShake'||name==='bendTiptoeShake'||name==='pigeonTiptoeShake') {
+  if(name==='tiptoeShake'||name==='bendTiptoeShake'||name==='pigeonTiptoeShake'||name==='stepPointShake') {
     const bent=name==='bendTiptoeShake';
     const inward=name==='pigeonTiptoeShake';
+    const stepped=name==='stepPointShake';
     // Preserve the existing pigeon-toed hip/knee yaw and roll; the heel
     // lift is added in place, rather than twisting the feet outward.
-    const neutral=bent?standingBendConfigs('bendTiptoe',amp):
+    const neutral=stepped?poses.stepPoint:
+      bent?standingBendConfigs('bendTiptoe',amp):
       inward?poses.pigeon.map((cfg,i)=>({...cfg,heel:i===0?38:35})):
       poses.tiptoe;
     return neutral.map((cfg,i)=>{
+      // The rear leg of the staggered pose bears weight and remains stable.
+      if(stepped&&i===1)return {...cfg};
       const tremor=Math.sin(theta+(i===0?0:.35));
-      const knee=(cfg.knee||0)+(bent?8:inward?6.5:5)*amp*tremor;
+      const knee=(cfg.knee||0)+(stepped?6.5:bent?8:inward?6.5:5)*amp*tremor;
+      const rock=.5-.5*Math.cos(theta+(stepped?0:i*.35));
+      const heelTravel=(stepped?7:bent?6.5:7.5)*amp*
+        Math.max(0,Math.min(2,Number(footMotion.heel??1)))*rock;
       return {...cfg,
-        pitch:(cfg.pitch||0)-(bent?2.7:inward?2.1:1.8)*amp*tremor,
+        pitch:(cfg.pitch||0)-(stepped?2.3:bent?2.7:inward?2.1:1.8)*amp*tremor,
         knee:inward?Math.max(3,knee):knee,
-        // Contact is corrected at the toe after joint deformation;
-        // the horizontal anchor is deliberately allowed a tiny sway.
+        heel:(cfg.heel||0)+heelTravel,
+        // Explicit toe-ground correction follows joint deformation.
       };
     });
   }
@@ -229,7 +243,8 @@ let resolved = new WeakMap();
 export function clearMotionCache() { resolved = new WeakMap(); }
 const applied = new WeakMap();
 
-function resolvePose(restGeometry, name, frameIndex=0, amplitude=1, footPitch=[0,0]) {
+function resolvePose(restGeometry, name, frameIndex=0, amplitude=1,
+  footPitch=[0,0], footMotion=defaultFootMotion) {
   let cache = resolved.get(restGeometry);
   if (!cache) {
     cache = new Map();
@@ -239,7 +254,7 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1, footPitch=[0
   if (cache.has(key)) return cache.get(key);
   const vertices = restGeometry.attributes.position.array;
   const footLevel = restGeometry.boundingBox.min.y;
-  const configs=isMotionPose(name)?motionConfigs(name,frameIndex/FRAME_COUNT,amplitude)
+  const configs=isMotionPose(name)?motionConfigs(name,frameIndex/FRAME_COUNT,amplitude,footMotion)
     :isAdjustableStandingPose(name)?standingBendConfigs(name,amplitude):poses[name];
   const followShin = isLyingPose(name);
   const second = makeTransform({ ...configs[1], followShin,
@@ -247,7 +262,7 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1, footPitch=[0
   let first = makeTransform({ ...configs[0], followShin,
     ankle: (configs[0].ankle || 0) + (Number(footPitch[0]) || 0) });
 
-  if (name === 'point') {
+  if (name === 'point' || name === 'stepPoint') {
     const supportingHeight = soleHeight(vertices, second);
     let low = 0, high = 80;
     for (let i = 0; i < 16; i++) {
@@ -257,7 +272,8 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1, footPitch=[0
       if (soleHeight(vertices, option) > supportingHeight) low = angle;
       else high = angle;
     }
-    first = makeTransform({ ...configs[0], knee: (low + high) / 2 });
+    first = makeTransform({ ...configs[0], knee: (low + high) / 2,
+      followShin, ankle:(configs[0].ankle||0)+(Number(footPitch[0])||0) });
   }
 
   // Shared pelvis anchor for unilateral kicking. The supporting leg keeps
@@ -265,30 +281,38 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1, footPitch=[0
   // not its own lowest moving foot vertex.
   const supportHeight = footLevel - soleHeight(vertices, second);
   const toeSupported=name==='tiptoeShake'||name==='bendTiptoeShake'
-    ||name==='pigeonTiptoeShake';
-  const reference=toeSupported?motionConfigs(name,0,amplitude):null;
+    ||name==='pigeonTiptoeShake'||name==='stepPointShake';
+  const reference=toeSupported?motionConfigs(name,0,amplitude,footMotion):null;
   const toeContact=[0,.022,.185];
   const result = [first, second].map((transform, leg) => {
     let x=configs[leg].x*(leg===0?1:-1);
     let y=Number.isFinite(configs[leg].shiftY)?configs[leg].shiftY:
       name==='kick'?supportHeight:footLevel-soleHeight(vertices,transform)+(configs[leg].lift||0);
     let z=configs[leg].z??0;
-    if(toeSupported){
+    if(toeSupported && (name!=='stepPointShake'||leg===0)){
       const referenceTransform=makeTransform({...reference[leg],followShin:false,
         ankle:(reference[leg].ankle||0)+(Number(footPitch[leg])||0)});
       const currentToe=transform(...toeContact);
       const initialToe=referenceTransform(...toeContact);
-      // The metatarsal/toe remains at the exact reference ground height.
-      // Allow a bounded, zero-drift horizontal sway (2-4mm at 100%).
-      // Zero displacement at phase=0 also avoids pops when selecting poses.
-      const theta=frameIndex/FRAME_COUNT*2*Math.PI;
-      const phase=leg*.47;
-      const swayX=amplitude*.0016*(Math.sin(theta+phase)-Math.sin(phase));
-      const swayZ=amplitude*.0021*(Math.sin(theta+phase*.7)-Math.sin(phase*.7));
+      // Independent lateral X and forward/back Z cycles form an oval,
+      // not one diagonal back-and-forth line. Slight second harmonics
+      // break mechanical synchrony; both begin with exactly zero offset.
+      const theta=frameIndex/FRAME_COUNT*2*Math.PI,phase=leg*.47;
+      const lateral=Math.max(0,Math.min(2,Number(footMotion.lateral??1)));
+      const forward=Math.max(0,Math.min(2,Number(footMotion.forward??1)));
+      const swayX=amplitude*lateral*(
+        .0016*(Math.sin(theta+phase)-Math.sin(phase))+
+        .00035*(Math.sin(2*theta+phase*.8)-Math.sin(phase*.8)));
+      const swayZ=amplitude*forward*(
+        .0021*(Math.cos(theta+phase*.7)-Math.cos(phase*.7))+
+        .00035*(Math.sin(2*theta+phase*.43)-Math.sin(phase*.43)));
       x+=initialToe[0]-currentToe[0]+swayX;
       z+=initialToe[2]-currentToe[2]+swayZ;
-      // Do not permit vertical jitter: heels may move, toes remain grounded.
-      y=footLevel-soleHeight(vertices,referenceTransform)+initialToe[1]-currentToe[1];
+      // Front toe of the staggered stance rests at the floor itself;
+      // all toe-supported animations keep zero VERTICAL displacement.
+      y=(name==='stepPointShake'?footLevel-initialToe[1]:
+        footLevel-soleHeight(vertices,referenceTransform))
+        +initialToe[1]-currentToe[1];
     }
     return {transform,x,y,z,visible:name!=='single'||leg===0};
   });
@@ -315,29 +339,65 @@ function transformNormal(transform, point, [x, y, z], [nx, ny, nz]) {
   return result.map(value => value / length);
 }
 
-function ensureSample(pose, rest) {
+const defaultLegMorph={length:1,thigh:1,calf:1};
+function morphedTransform(base,morph=defaultLegMorph){
+  const length=Math.max(.82,Math.min(1.22,Number(morph.length??1)));
+  const calf=Math.max(.75,Math.min(1.35,Number(morph.calf??1)));
+  const thigh=Math.max(.75,Math.min(1.35,Number(morph.thigh??1)));
+  if(Math.abs(length-1)<.0001&&Math.abs(calf-1)<.0001&&Math.abs(thigh-1)<.0001)
+    return base;
+  const a=base(...ankle),k=base(...knee),h=base(...hip);
+  const lower=k.map((v,i)=>v-a[i]),upper=h.map((v,i)=>v-k[i]);
+  const normalize=v=>{const n=Math.hypot(...v)||1;return v.map(x=>x/n)};
+  const axisLow=normalize(lower),axisHigh=normalize(upper);
+  return (x,y,z)=>{
+    const p=base(x,y,z);
+    const shin=smoothstep(.09,.49,y),top=smoothstep(.49,.90,y);
+    const delta=length-1;
+    // Lengthen two articulated bone segments, rather than stretching the
+    // world Y axis: supine/crossed legs preserve anatomical directions.
+    for(let i=0;i<3;i++)p[i]+=delta*(lower[i]*shin+upper[i]*top);
+    if(y>.115){
+      const ratio=smoothstep(.35,.60,y),width=calf*(1-ratio)+thigh*ratio;
+      const fade=smoothstep(.115,.19,y);
+      if(Math.abs(width-1)>.0001&&fade>0){
+        const center=base(0,y,.015),axis=y<.49?axisLow:axisHigh;
+        const v=[p[0]-center[0]-delta*(lower[0]*shin+upper[0]*top),
+                 p[1]-center[1]-delta*(lower[1]*shin+upper[1]*top),
+                 p[2]-center[2]-delta*(lower[2]*shin+upper[2]*top)];
+        const dot=v[0]*axis[0]+v[1]*axis[1]+v[2]*axis[2];
+        for(let i=0;i<3;i++)p[i]+=(width-1)*fade*(v[i]-axis[i]*dot);
+      }
+    }
+    return p;
+  };
+}
+
+function ensureSample(pose, rest, legMorph=defaultLegMorph) {
   if(pose.vertices)return;
+  const shaped=morphedTransform(pose.transform,legMorph);
   pose.vertices=new Float32Array(rest.position.array.length);
   pose.normals=new Float32Array(rest.normal.array.length);
   for(let i=0;i<rest.position.count;i++) {
     const off=i*3;
     const p=rest.position.array.subarray(off,off+3);
     const n=rest.normal.array.subarray(off,off+3);
-    const point=pose.transform(...p);
+    const point=shaped(...p);
     pose.vertices.set(point,off);
-    pose.normals.set(transformNormal(pose.transform,point,p,n),off);
+    pose.normals.set(transformNormal(shaped,point,p,n),off);
   }
 }
-export function applyPose(geometry, restGeometry, poseName, legIndex, phase=0, amplitude=1, footPitch=[0,0]) {
+export function applyPose(geometry, restGeometry, poseName, legIndex, phase=0, amplitude=1,
+  footPitch=[0,0], footMotion=defaultFootMotion, legMorph=defaultLegMorph) {
   const name=(Object.hasOwn(poses,poseName)||isMotionPose(poseName))?poseName:'step';
   const animated=isMotionPose(name);
   const step=animated ? ((phase%1+1)%1)*FRAME_COUNT : 0;
   const first=Math.floor(step),next=(first+1)%FRAME_COUNT,t=step-first;
-  const pose=resolvePose(restGeometry,name,first,amplitude,footPitch)[legIndex];
-  const future=animated?resolvePose(restGeometry,name,next,amplitude,footPitch)[legIndex]:null;
+  const pose=resolvePose(restGeometry,name,first,amplitude,footPitch,footMotion)[legIndex];
+  const future=animated?resolvePose(restGeometry,name,next,amplitude,footPitch,footMotion)[legIndex]:null;
   const rest=restGeometry.attributes;
-  ensureSample(pose,rest);
-  if(future)ensureSample(future,rest);
+  ensureSample(pose,rest,legMorph);
+  if(future)ensureSample(future,rest,legMorph);
   const placement={
     x:future?pose.x+(future.x-pose.x)*t:pose.x,
     y:future?pose.y+(future.y-pose.y)*t:pose.y,
