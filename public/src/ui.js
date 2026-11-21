@@ -1,7 +1,14 @@
 const POSES = {
   single: '单腿', together: '并立', step: '一前一后', crossed: '交叉',
   tiptoe: '踮脚', point: '足尖点地', pigeon: '内八',
+  sitNatural:'自然坐姿',sitReach:'坐姿前伸',sitCross:'坐姿二郎腿',
+  kick:'踢腿',walk:'步行',run:'跑步',
+  sitBounce:'坐姿抖腿',sitCrossKick:'二郎腿前踢',
 };
+const STANDING_POSES=Object.fromEntries(Object.entries(POSES).slice(0,7));
+const SEATED_POSES=Object.fromEntries(Object.entries(POSES).slice(7,10));
+const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(10));
+const isMotionName=name=>Object.hasOwn(MOTION_POSES,name);
 
 const STOCKING_LENGTHS = {
   ankle: '短袜', crew: '中筒袜', knee: '及膝袜', over: '过膝袜', thigh: '大腿袜', tights: '连裤袜',
@@ -213,6 +220,15 @@ export function initUI(engine) {
   const sceneNote = note('');
   scenes.replaceChildren(sceneChoices, backdropRow, sceneNote);
 
+  const motionToggle = button('暂停动作',{id:'motionToggle'});
+  const motionSpeedInput=element('input',{id:'motionSpeed',type:'range',min:'0.5',
+    max:'2',step:'0.1',value:'1','aria-label':'动作播放速度'});
+  const motionSpeedValue=element('output',{id:'motionSpeedValue'},['1.0×']);
+  const motionControl=element('div',{class:'motion-control'},[
+    motionToggle,
+    element('div',{class:'motion-speed'},[motionSpeedInput,motionSpeedValue]),
+  ]);
+  let motionPlaying=true;
   const materialNote = note('');
   const legSummary = element('div', {class:'leg-summary',id:'legSummary'}, [
     button('左腿 · 40D', {id:'legSummary0','data-leg-target':'0'}),
@@ -236,7 +252,13 @@ export function initUI(engine) {
     ]),
   ]);
   const tabContents = {
-    pose: [choices('pose', POSES), note('键盘数字键 1 到 7 也能换姿势。', 'pane-hint keys')],
+    pose: [
+      row('站立',choices('pose',STANDING_POSES)),
+      row('坐姿',choices('pose',SEATED_POSES)),
+      row('动态',choices('pose',MOTION_POSES)),
+      row('播放',motionControl),
+      note('数字键 1–7 选站姿；坐姿与动作点击选择，循环动作可暂停或调节速度。','pane-hint keys'),
+    ],
     preset: [presetChoices],
     style: [
       row('长度', choices('length', STOCKING_LENGTHS)),
@@ -306,22 +328,23 @@ export function initUI(engine) {
   }
 
   function syncChoices(parent, key, selected) {
-    const group = parent.querySelector('[data-key="' + key + '"]');
-    if (!group) return;
-    for (const option of group.querySelectorAll('button')) {
-      const isSelected = option.dataset.v === String(selected ?? '');
-      option.classList.toggle('on', isSelected);
-      if (option.getAttribute('role') === 'radio') {
-        option.setAttribute('aria-checked', String(isSelected));
+    // Multiple pose chip groups share one logical choice namespace.
+    for (const group of parent.querySelectorAll('[data-key="' + key + '"]')) {
+      for (const option of group.querySelectorAll('button')) {
+        const isSelected = option.dataset.v === String(selected ?? '');
+        option.classList.toggle('on', isSelected);
+        if (option.getAttribute('role') === 'radio') {
+          option.setAttribute('aria-checked', String(isSelected));
+        }
       }
-    }
-    const custom = group.querySelector('.custom');
-    if (custom) {
-      const selectedCustom = isHex(selected);
-      custom.classList.toggle('on', selectedCustom);
-      if (selectedCustom) {
-        custom.style.setProperty('--c', selected);
-        custom.querySelector('input').value = selected;
+      const custom = group.querySelector('.custom');
+      if (custom) {
+        const selectedCustom = isHex(selected);
+        custom.classList.toggle('on', selectedCustom);
+        if (selectedCustom) {
+          custom.style.setProperty('--c', selected);
+          custom.querySelector('input').value = selected;
+        }
       }
     }
   }
@@ -355,6 +378,8 @@ export function initUI(engine) {
     const lightnessOutput = get('#skinBrightnessValue');
     if (lightnessOutput) lightnessOutput.textContent = state.skinBrightness + '%';
     syncChoices(materials, 'pose', state.pose);
+    motionControl.hidden = !isMotionName(state.pose);
+    motionToggle.textContent=motionPlaying?'暂停动作':'继续动作';
     syncChoices(materials, 'target', state.target);
     foot.classList.toggle('no-target', state.tab === 'pose');
     const inactive = ['velvet', 'cotton', 'latex'].includes(leg.material);
@@ -525,6 +550,8 @@ export function initUI(engine) {
   function setPose(pose) {
     state.pose = pose;
     engine.setPose(pose);
+    motionPlaying=true;
+    engine.setMotionPlaying(true);
     syncWardrobe();
     drawThumbnails();
   }
@@ -671,6 +698,16 @@ export function initUI(engine) {
   get('#resetToeBtn').addEventListener('click', () => {
     engine.resetCamera();
     setPanel(null);
+  });
+  motionToggle.addEventListener('click',()=>{
+    motionPlaying=!motionPlaying;
+    engine.setMotionPlaying(motionPlaying);
+    motionToggle.textContent=motionPlaying?'暂停动作':'继续动作';
+  });
+  motionSpeedInput.addEventListener('input',()=>{
+    const speed=Math.max(.5,Math.min(2,Number(motionSpeedInput.value)||1));
+    motionSpeedValue.textContent=speed.toFixed(1)+'×';
+    engine.setMotionSpeed(speed);
   });
   materials.querySelector('[data-key="color"] input[type="color"]').addEventListener('input', event => {
     editMaterial('color', event.target.value);
