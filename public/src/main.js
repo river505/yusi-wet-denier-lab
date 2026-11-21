@@ -434,6 +434,27 @@ function createEngine({ stocking }) {
     view.target.copy(restTarget);
     lastInput = performance.now();
   }
+  function focusToes(targetLeg = '-1') {
+    // Use the actual posed foot transforms. A fixed camera target would
+    // drift away from toes when switching crossing/tiptoe/pigeon poses.
+    world.updateMatrixWorld(true);
+    const selected = targetLeg === '0' ? [0] :
+      targetLeg === '1' && models[1].group.visible ? [1] :
+      models[1].group.visible ? [0,1] : [0];
+    const point = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    selected.forEach(index => {
+      point.set(0,.035,.177);
+      models[index].group.localToWorld(point);
+      center.add(point);
+    });
+    center.multiplyScalar(1 / selected.length);
+    view.target.copy(center);
+    view.range = selected.length === 1 ? .58 : .76;
+    view.yaw = .17;
+    view.pitch = .23;
+    lastInput = performance.now();
+  }
 
   function orient(targetCamera, state) {
     const radius = Math.cos(state.pitch) * state.range;
@@ -813,7 +834,7 @@ function createEngine({ stocking }) {
   setPose('step');
 
   return {
-    setScene, setSkinAppearance, setMaterial, setPose, zoom, orbit, resetCamera, bucket, dry, photo, thumbnail,
+    setScene, setSkinAppearance, setMaterial, setPose, zoom, orbit, resetCamera, focusToes, bucket, dry, photo, thumbnail,
     setMode(value) { mode = value; lastInput = performance.now(); },
     setRain(value) { rain = value; },
     setSlow(value) { slow = value; },
