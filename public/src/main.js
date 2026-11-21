@@ -480,7 +480,7 @@ function createEngine({ stocking }) {
   const pointers = new Map();
   const view = { yaw: .76, pitch: .12, range: 2.50, target: restTarget.clone() };
   const liveView = { yaw: .76, pitch: .12, range: 2.50, target: restTarget.clone() };
-  const panelCamera={active:false,previous:null,signature:''};
+  const panelCamera={active:false,previous:null,signature:'',suspended:false,manual:false};
   let environment = 'studio';
   let colorway = 'lilac';
   let wardrobe = [defaultLeg, defaultLeg];
@@ -641,13 +641,14 @@ function createEngine({ stocking }) {
     // Bias the full-leg preview upward by another 10–42 CSS pixels.
     // This offset is included in the perspective-fit budget, so lifting
     // the model never clips the thigh or toes against the top safe edge.
-    const lift=Math.min(42,freeHeight*.15);
+    const lift=Math.min(24,freeHeight*.08);
     return {top:top-rect.top,bottom:bottom-rect.top,
       height:freeHeight,width:Math.max(120,rect.width-38),
       lift,sheetTop};
   }
   function fitPanelCamera(){
-    if(!panelCamera.active||document.body.classList.contains('wide'))return;
+    if(!panelCamera.active||panelCamera.suspended||
+      document.body.classList.contains('wide'))return;
     const bounds=panelBounds(),center=bounds.getCenter(new THREE.Vector3()),points=[];
     for(const x of [bounds.min.x,bounds.max.x])
       for(const y of [bounds.min.y,bounds.max.y])
@@ -667,7 +668,7 @@ function createEngine({ stocking }) {
     const halfWidth=region.width*.46;
     // Reserve enough projected space above the lifted centre for the
     // entire upper-leg silhouette; the bottom has more spare room.
-    const halfHeight=Math.max(14,(region.height*.5-region.lift)*.91);
+    const halfHeight=Math.max(14,(region.height*.5-region.lift)*.98);
     const fits=distance=>projected.every(([x,y,z])=>{
       const depth=distance-z;
       return depth>.08&&x*focal/depth<=halfWidth&&y*focal/depth<=halfHeight;
@@ -679,7 +680,7 @@ function createEngine({ stocking }) {
       if(fits(mid))high=mid;else low=mid;
     }
     view.target.copy(center);
-    view.range=THREE.MathUtils.clamp(high*1.035,.25,40);
+    view.range=THREE.MathUtils.clamp(high*1.01,.23,40);
     lastInput=performance.now();
   }
   function setPanelFraming(open=false,force=false){
@@ -690,13 +691,15 @@ function createEngine({ stocking }) {
         view.yaw=old.yaw;view.pitch=old.pitch;view.range=old.range;
         view.target.copy(old.target);
       }
-      panelCamera.active=false;panelCamera.previous=null;panelCamera.signature='';
+      panelCamera.active=false;panelCamera.previous=null;
+      panelCamera.signature='';panelCamera.manual=false;
       lastInput=performance.now();
       return;
     }
     if(!panelCamera.active){
       panelCamera.previous={yaw:view.yaw,pitch:view.pitch,
         range:view.range,target:view.target.clone()};
+      panelCamera.manual=false;
     }
     panelCamera.active=true;
     const r=panelRegion();
@@ -760,7 +763,8 @@ function createEngine({ stocking }) {
 
   function zoom(step) {
     view.range=THREE.MathUtils.clamp(view.range*Math.exp(-step*.19),
-      .23,panelCamera.active?40:3.2);
+      .23,40);
+    if(panelCamera.active)panelCamera.manual=true;
     lastInput = performance.now();
   }
 
@@ -769,6 +773,7 @@ function createEngine({ stocking }) {
     // Mouse and single-touch drags share this one orbit function.
     view.yaw -= dx * .009;
     view.pitch = THREE.MathUtils.clamp(view.pitch + dy * .007, -.60, 1.25);
+    if(panelCamera.active)panelCamera.manual=true;
     lastInput = performance.now();
   }
 
@@ -782,7 +787,7 @@ function createEngine({ stocking }) {
     backdropMaterial.uniforms.aspect.value = camera.aspect;
     camera.fov = width / height < .75 ? 34 : 30;
     camera.updateProjectionMatrix();
-    if(panelCamera.active)setPanelFraming(true,true);
+    if(panelCamera.active)setPanelFraming(true);
   }
 
   function updateCamera(delta) {
@@ -1047,6 +1052,10 @@ function createEngine({ stocking }) {
     const [target, config] = next.value;
     thumbnailQueue.delete(target);
     if (target.isConnected) {
+      // Thumbnails may swap the live pose but must never reset the camera.
+      const wasSuspended=panelCamera.suspended;
+      panelCamera.suspended=true;
+      try {
       const current = { environment, colorway, wardrobe, pose };
       const cachedVisibility = [...droplets, ...ripples].map(({ mesh }) => [mesh, mesh.visible]);
       cachedVisibility.forEach(([mesh]) => { mesh.visible = false; });
@@ -1078,6 +1087,9 @@ function createEngine({ stocking }) {
       setMaterial(current.wardrobe);
       setPose(current.pose);
       cachedVisibility.forEach(([mesh, visible]) => { mesh.visible = visible; });
+      } finally {
+        panelCamera.suspended=wasSuspended;
+      }
     }
     if (thumbnailQueue.size) requestAnimationFrame(drawThumbnail);
   }
@@ -1110,7 +1122,9 @@ function createEngine({ stocking }) {
       const before = Math.hypot(other.x - previous.x, other.y - previous.y);
       const after = Math.hypot(other.x - pointer.x, other.y - pointer.y);
       if (before > 1) {
-        view.range = THREE.MathUtils.clamp(view.range * before / Math.max(1, after), .23, 3.2);
+        view.range=THREE.MathUtils.clamp(
+          view.range*before/Math.max(1,after),.23,40);
+        if(panelCamera.active)panelCamera.manual=true;
       }
       pointer.wet = other.wet = false;
     } else if (!pointer.wet) orbit(pointer.x - previous.x, pointer.y - previous.y);
@@ -1124,6 +1138,7 @@ function createEngine({ stocking }) {
     if (!hit) return;
     view.target.copy(hit.point);
     view.range = Math.min(view.range, .65);
+    if(panelCamera.active)panelCamera.manual=true;
     lastInput = performance.now();
   });
   for (const type of ['pointercancel', 'lostpointercapture']) {
@@ -1194,7 +1209,7 @@ function createEngine({ stocking }) {
       // Preserve the user's orbit rather than snapping back to a preset.
       // Rescale distance and target so taller/longer legs stay framed on phones.
       if(Math.abs(ratio-1)>.0001){
-        view.range=THREE.MathUtils.clamp(view.range*ratio,.23,3.2);
+        view.range=THREE.MathUtils.clamp(view.range*ratio,.23,40);
         if(isLyingPose(pose))view.target.z*=ratio;
         else view.target.y*=ratio;
       }
