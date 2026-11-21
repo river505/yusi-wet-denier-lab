@@ -1,6 +1,7 @@
 const POSES = {
   single: '单腿', together: '并立', step: '一前一后', crossed: '交叉',
   tiptoe: '踮脚', point: '足尖点地', pigeon: '内八',
+  bendForward: '屈膝前倾', bendTiptoe: '屈膝踮脚',
   sitNatural:'自然坐姿',sitReach:'坐姿前伸',sitCross:'坐姿二郎腿',
   kick:'踢腿',walk:'步行',run:'跑步',
   sitBounce:'坐姿抖腿',sitCrossKick:'二郎腿前踢',
@@ -8,14 +9,18 @@ const POSES = {
   lieCrossLeft:'平躺二郎腿 · 左搭右',lieCrossRight:'平躺二郎腿 · 右搭左',
   lieSideLeft:'左侧躺',lieSideRight:'右侧躺',
 };
-const STANDING_POSES=Object.fromEntries(Object.entries(POSES).slice(0,7));
-const SEATED_POSES=Object.fromEntries(Object.entries(POSES).slice(7,10));
-const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(10,15));
-const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(15));
+const STANDING_POSES=Object.fromEntries(Object.entries(POSES).slice(0,9));
+const SEATED_POSES=Object.fromEntries(Object.entries(POSES).slice(9,12));
+const MOTION_POSES=Object.fromEntries(Object.entries(POSES).slice(12,17));
+const LYING_POSES=Object.fromEntries(Object.entries(POSES).slice(17));
 const isMotionName=name=>Object.hasOwn(MOTION_POSES,name);
 const isLyingName=name=>Object.hasOwn(LYING_POSES,name);
 const MOTION_KEYS=Object.keys(MOTION_POSES);
-const defaultAmplitudes=()=>Object.fromEntries(MOTION_KEYS.map(name=>[name,100]));
+const BEND_KEYS=['bendForward','bendTiptoe'];
+const AMPLITUDE_KEYS=[...MOTION_KEYS,...BEND_KEYS];
+const isBendName=name=>BEND_KEYS.includes(name);
+const isAdjustableName=name=>isMotionName(name)||isBendName(name);
+const defaultAmplitudes=()=>Object.fromEntries(AMPLITUDE_KEYS.map(name=>[name,100]));
 const clampAmplitude=value=>Math.max(20,Math.min(200,Math.round((Number(value)||100)/10)*10));
 const clampFootPitch=value=>Math.max(-35,Math.min(35,Math.round(Number(value)||0)));
 
@@ -169,7 +174,7 @@ function serializeLook(state) {
     leg.length, leg.cuff, Number(leg.garter), leg.material, leg.denier, leg.pattern,
     encodeColor(leg.color), leg.secret, encodeColor(leg.wetColor) || '-', leg.toeStyle||'natural',
   ].join('.'));
-  const amplitudes=MOTION_KEYS.map(name=>clampAmplitude(state.motionAmplitudes?.[name])).join('-');
+  const amplitudes=AMPLITUDE_KEYS.map(name=>clampAmplitude(state.motionAmplitudes?.[name])).join('-');
   return ['1', state.pose, state.scene, encodeColor(state.backdrop), ...legs,
     encodeColor(state.skinTone), state.skinBrightness, amplitudes,
     state.footPitch.map(clampFootPitch).join(','),state.legSpacing||100].join('~');
@@ -184,7 +189,7 @@ function deserializeLook(hash) {
   const pitchParts=pitches.split(',');
   const footPitch=[clampFootPitch(pitchParts[0]),clampFootPitch(pitchParts[1])];
   const ampParts=amps.split('-');
-  const motionAmplitudes=Object.fromEntries(MOTION_KEYS.map(
+  const motionAmplitudes=Object.fromEntries(AMPLITUDE_KEYS.map(
     (key,index)=>[key,clampAmplitude(ampParts[index])]
   ));
   if (version !== '1') return null;
@@ -255,14 +260,16 @@ export function initUI(engine) {
   const motionSpeedInput=element('input',{id:'motionSpeed',type:'range',min:'0.5',
     max:'2',step:'0.1',value:'1','aria-label':'动作播放速度'});
   const motionSpeedValue=element('output',{id:'motionSpeedValue'},['1.0×']);
+  const motionSpeedControl=element('div',{class:'motion-speed'},[motionSpeedInput,motionSpeedValue]);
   const motionAmplitudeInput=element('input',{id:'motionAmplitude',type:'range',
     min:'20',max:'200',step:'10',value:'100','aria-label':'动作摆动幅度'});
   const motionAmplitudeValue=element('output',{id:'motionAmplitudeValue'},['100%']);
+  const motionPropertyLabel=element('span',{class:'motion-property'},['幅度']);
   const motionControl=element('div',{class:'motion-control'},[
     motionToggle,
-    element('div',{class:'motion-speed'},[motionSpeedInput,motionSpeedValue]),
+    motionSpeedControl,
     element('div',{class:'motion-amplitude'},[
-      element('span',{class:'motion-property'},['幅度']),
+      motionPropertyLabel,
       motionAmplitudeInput,motionAmplitudeValue,
     ]),
   ]);
@@ -302,7 +309,7 @@ export function initUI(engine) {
         button('复位',{id:'footPitchReset',class:'pill'}),
       ])),
       footPitchHint,
-      row('播放',motionControl),
+      row('动作 / 幅度',motionControl),
       note('所有站姿、坐姿、躺姿及动态动作均使用脚面俯仰设置；左右脚可独立控制。','pane-hint keys'),
     ],
     preset: [presetChoices],
@@ -432,7 +439,12 @@ export function initUI(engine) {
       ? '当前左脚 '+state.footPitch[0]+'° / 右脚 '+state.footPitch[1]+'°；拖动滑块会统一双脚。'
       : '0° 保留姿势默认踝角。范围 −35° 至 +35°；躺姿的自然约 90° 踝角可在此基础上调整。';
     syncChoices(materials, 'pose', state.pose);
-    motionControl.hidden = !isMotionName(state.pose);
+    const isAnimated=isMotionName(state.pose);
+    motionControl.hidden = !isAdjustableName(state.pose);
+    motionToggle.hidden = !isAnimated;
+    motionSpeedControl.hidden = !isAnimated;
+    motionPropertyLabel.textContent=isBendName(state.pose)?'屈膝幅度':'动作幅度';
+    motionAmplitudeInput.setAttribute('aria-label',isBendName(state.pose)?'屈膝与踮脚幅度':'动作摆动幅度');
     motionToggle.textContent=motionPlaying?'暂停动作':'继续动作';
     motionAmplitudeInput.value=String(clampAmplitude(state.motionAmplitudes[state.pose]));
     motionAmplitudeValue.textContent=motionAmplitudeInput.value+'%';
@@ -606,11 +618,11 @@ export function initUI(engine) {
   function setPose(pose) {
     const wasLying=isLyingName(state.pose);
     state.pose = pose;
-    engine.setPose(pose);
-    if(isLyingName(pose)!==wasLying)engine.resetCamera();
-    if(isMotionName(pose)){
+    if(isAdjustableName(pose)){
       engine.setMotionAmplitude(clampAmplitude(state.motionAmplitudes[pose])/100);
     }
+    engine.setPose(pose);
+    if(isLyingName(pose)!==wasLying)engine.resetCamera();
     motionPlaying=true;
     engine.setMotionPlaying(true);
     syncWardrobe();
@@ -793,7 +805,7 @@ export function initUI(engine) {
     engine.setMotionSpeed(speed);
   });
   motionAmplitudeInput.addEventListener('input',()=>{
-    if(!isMotionName(state.pose))return;
+    if(!isAdjustableName(state.pose))return;
     const percent=clampAmplitude(motionAmplitudeInput.value);
     state.motionAmplitudes[state.pose]=percent;
     motionAmplitudeValue.textContent=percent+'%';
