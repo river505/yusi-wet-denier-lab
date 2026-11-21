@@ -34,10 +34,10 @@ const poses = {
     {x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735}],
   // The crossing foot ankle lies above the opposite raised knee. Use mirror
   // transforms for left-/right-crossing rather than rotating the whole rig.
-  lieCrossLeft: [{x:.095,pitch:-200,knee:110,roll:-15,yaw:-70,shiftY:-.735},
+  lieCrossLeft: [{x:.095,pitch:-200,knee:110,roll:-15,yaw:-70,shiftY:-.700},
     {x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735}],
   lieCrossRight: [{x:.095,pitch:-155,knee:155,yaw:-4,shiftY:-.735},
-    {x:.095,pitch:-200,knee:110,roll:15,yaw:70,shiftY:-.735}],
+    {x:.095,pitch:-200,knee:110,roll:15,yaw:70,shiftY:-.700}],
   lieSideLeft: [{x:.095,pitch:-92,knee:7,roll:65,yaw:8,shiftY:-.77},
     {x:.095,pitch:-97,knee:20,roll:65,yaw:5,shiftY:-.68}],
   lieSideRight: [{x:.095,pitch:-97,knee:20,roll:-65,yaw:-5,shiftY:-.68},
