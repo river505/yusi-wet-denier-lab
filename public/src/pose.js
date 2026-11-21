@@ -18,6 +18,9 @@ const poses = {
     { x: .092, yaw: 8 }],
   pigeon: [{ x: .094, yaw: -20, roll: 4.5, pitch: -9, knee: 15 },
     { x: .095, yaw: -17, roll: 4.2, pitch: -7.5, knee: 12 }],
+  // Both standing bends reuse the anatomical hip, knee, and ankle pivots.
+  bendForward: [{ x:.095 }, { x:.095 }],
+  bendTiptoe: [{ x:.095 }, { x:.095 }],
   // A seat height of 0.57 m gives a hip at y~0.57 and bent legs below it.
   sitNatural: [{ x:.095, pitch:-79, knee:84, yaw:7, roll:-2, shiftY:-.32 },
     { x:.095, pitch:-81, knee:86, yaw:6, roll:2, shiftY:-.32 }],
@@ -46,10 +49,24 @@ const poses = {
 const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick']);
 const lyingNames=new Set(['lieFlat','lieBent','lieCrossLeft','lieCrossRight','lieSideLeft','lieSideRight']);
 const seatedNames=new Set(['sitNatural','sitReach','sitCross','sitBounce','sitCrossKick']);
+const standingBendNames=new Set(['bendForward','bendTiptoe']);
+export const isAdjustableStandingPose=name=>standingBendNames.has(name);
 export const isMotionPose = name => motionNames.has(name);
 export const isSeatedPose = name => seatedNames.has(name);
 export const isLyingPose = name => lyingNames.has(name);
 const FRAME_COUNT=12;
+function standingBendConfigs(name, amplitude=1) {
+  // Forward flexion of the thigh advances the knee while the lower leg
+  // counter-rotates; the toe stance additionally raises the heel.
+  const amp=Math.max(.2,Math.min(2,Number(amplitude)||1));
+  const kneeAngle=Math.min(88,8+42*amp);
+  const hipAngle=-Math.min(49,4+23*amp);
+  const heelAngle=name==='bendTiptoe'?Math.min(55,5+30*amp):0;
+  return [
+    {x:.095,yaw:7,roll:-1.8,pitch:hipAngle,knee:kneeAngle,heel:heelAngle},
+    {x:.095,yaw:5,roll:1.8,pitch:hipAngle+1,knee:kneeAngle-2,heel:heelAngle},
+  ];
+}
 function motionConfigs(name, phase, amplitude=1) {
   // One explicit amplitude parameter scales *excursions*, not the joint
   // neutral pose. Both legs keep their anatomical hip/knee pivot positions.
@@ -193,7 +210,8 @@ function resolvePose(restGeometry, name, frameIndex=0, amplitude=1, footPitch=[0
   if (cache.has(key)) return cache.get(key);
   const vertices = restGeometry.attributes.position.array;
   const footLevel = restGeometry.boundingBox.min.y;
-  const configs=isMotionPose(name)?motionConfigs(name,frameIndex/FRAME_COUNT,amplitude):poses[name];
+  const configs=isMotionPose(name)?motionConfigs(name,frameIndex/FRAME_COUNT,amplitude)
+    :isAdjustableStandingPose(name)?standingBendConfigs(name,amplitude):poses[name];
   const followShin = isLyingPose(name);
   const second = makeTransform({ ...configs[1], followShin,
     ankle: (configs[1].ankle || 0) + (Number(footPitch[1]) || 0) });
