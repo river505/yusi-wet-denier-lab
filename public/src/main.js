@@ -329,7 +329,7 @@ function createEngine({ stocking }) {
     powerPreference: mobilePointer ? 'default' : 'high-performance',
   });
   const world = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(30, 1, .02, 12);
+  const camera = new THREE.PerspectiveCamera(30, 1, .02, 80);
   const thumbCamera = new THREE.PerspectiveCamera(30, 3 / 4, .02, 12);
   const backdropMaterial = new THREE.ShaderMaterial({
     uniforms: {
@@ -480,6 +480,7 @@ function createEngine({ stocking }) {
   const pointers = new Map();
   const view = { yaw: .76, pitch: .12, range: 2.50, target: restTarget.clone() };
   const liveView = { yaw: .76, pitch: .12, range: 2.50, target: restTarget.clone() };
+  const panelCamera={active:false,previous:null,signature:''};
   let environment = 'studio';
   let colorway = 'lilac';
   let wardrobe = [defaultLeg, defaultLeg];
@@ -613,6 +614,89 @@ function createEngine({ stocking }) {
     }
   }
 
+  function panelBounds(){
+    const bounds=new THREE.Box3().makeEmpty(),point=new THREE.Vector3();
+    models.forEach(({group,cloth})=>{
+      if(!group.visible||!cloth.geometry.boundingBox)return;
+      group.updateMatrixWorld(true);
+      const b=cloth.geometry.boundingBox;
+      for(const x of [b.min.x,b.max.x])
+        for(const y of [b.min.y,b.max.y])
+          for(const z of [b.min.z,b.max.z])
+            bounds.expandByPoint(point.set(x,y,z).applyMatrix4(group.matrixWorld));
+    });
+    if(bounds.isEmpty())bounds.setFromCenterAndSize(restTarget,new THREE.Vector3(.5,1,.4));
+    return bounds.expandByScalar(.028*legMorph.height);
+  }
+  function panelRegion(){
+    const rect=canvas.getBoundingClientRect();
+    const sheet=document.body.classList.contains('mat-open')
+      ?document.getElementById('materials'):document.getElementById('scenes');
+    const dock=document.querySelector('.dock');
+    const sheetTop=sheet?.getBoundingClientRect().top??rect.bottom;
+    const bottom=Math.min(sheetTop-16,(dock?.getBoundingClientRect().top??rect.bottom)-12);
+    const top=Math.max(rect.top+78,rect.top+rect.height*.075);
+    return {top:top-rect.top,bottom:bottom-rect.top,
+      height:Math.max(70,bottom-top),width:Math.max(120,rect.width-38),
+      sheetTop};
+  }
+  function fitPanelCamera(){
+    if(!panelCamera.active||document.body.classList.contains('wide'))return;
+    const bounds=panelBounds(),center=bounds.getCenter(new THREE.Vector3()),points=[];
+    for(const x of [bounds.min.x,bounds.max.x])
+      for(const y of [bounds.min.y,bounds.max.y])
+        for(const z of [bounds.min.z,bounds.max.z])
+          points.push(new THREE.Vector3(x,y,z));
+    const region=panelRegion();
+    const cp=Math.cos(view.pitch),sp=Math.sin(view.pitch);
+    const sy=Math.sin(view.yaw),cy=Math.cos(view.yaw);
+    const towardsCamera=new THREE.Vector3(sy*cp,sp,cy*cp);
+    const right=new THREE.Vector3(cy,0,-sy);
+    const up=new THREE.Vector3().crossVectors(towardsCamera,right);
+    const focal=Math.max(1,height)/(2*Math.tan(THREE.MathUtils.degToRad(camera.fov)*.5));
+    const projected=points.map(point=>{
+      const v=point.sub(center);
+      return [Math.abs(v.dot(right)),Math.abs(v.dot(up)),v.dot(towardsCamera)];
+    });
+    const halfWidth=region.width*.46,halfHeight=region.height*.46;
+    const fits=distance=>projected.every(([x,y,z])=>{
+      const depth=distance-z;
+      return depth>.08&&x*focal/depth<=halfWidth&&y*focal/depth<=halfHeight;
+    });
+    let low=.15,high=.5;
+    while(!fits(high)&&high<40)high*=1.6;
+    for(let i=0;i<22;i++){
+      const mid=(low+high)*.5;
+      if(fits(mid))high=mid;else low=mid;
+    }
+    view.target.copy(center);
+    view.range=THREE.MathUtils.clamp(high*1.035,.25,40);
+    lastInput=performance.now();
+  }
+  function setPanelFraming(open=false,force=false){
+    const enabled=Boolean(open)&&!document.body.classList.contains('wide');
+    if(!enabled){
+      if(panelCamera.active&&panelCamera.previous){
+        const old=panelCamera.previous;
+        view.yaw=old.yaw;view.pitch=old.pitch;view.range=old.range;
+        view.target.copy(old.target);
+      }
+      panelCamera.active=false;panelCamera.previous=null;panelCamera.signature='';
+      lastInput=performance.now();
+      return;
+    }
+    if(!panelCamera.active){
+      panelCamera.previous={yaw:view.yaw,pitch:view.pitch,
+        range:view.range,target:view.target.clone()};
+    }
+    panelCamera.active=true;
+    const r=panelRegion();
+    const signature=[Math.round(width),Math.round(height),
+      Math.round(r.sheetTop),pose,legMorph.length,legMorph.height,legSpacing].join(':');
+    if(!force&&signature===panelCamera.signature)return;
+    panelCamera.signature=signature;
+    fitPanelCamera();
+  }
   function resetCamera() {
     const extent=legMorph.height*(.2+.8*legMorph.length);
     if(isLyingPose(pose)){
