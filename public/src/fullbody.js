@@ -106,7 +106,9 @@ async function loadModel(){
   model.add(skinMesh);
   const eyeGeo=new THREE.BufferGeometry();
   eyeGeo.setAttribute('position',geometry.getAttribute('position'));
-  eyeGeo.setAttribute('normal',geometry.getAttribute('normal'));
+  // Eye normals must remain independent. The visible skin mesh recalculates
+  // smooth normals after sculpting; eyeball polygons are not in its index.
+  eyeGeo.setAttribute('normal',new THREE.BufferAttribute(new Float32Array(rawNormals),3));
   eyeGeo.setIndex(new THREE.BufferAttribute(eyeIdx,1));
   eyesMesh=new THREE.Mesh(eyeGeo,eyeMaterial);
   eyesMesh.frustumCulled=false;
@@ -339,24 +341,22 @@ function poseAngles(time){
   if(name==='sitBounce'){L.knee+=13*amp*Math.sin(phase);R.knee+=9*amp*Math.sin(phase+1.5);}
   return [L,R];
 }
-const posedSource=[];
 function updatePose(t){
   if(!geometry||!basePositions)return;
+  if(needShape){reconstructShape();shapedPositions=new Float32Array(geometry.attributes.position.array);}
   const pos=geometry.attributes.position.array;
-  if(needShape)reconstructShape();
-  if(!posedSource.length||needShape){
-    posedSource.length=0;
-  }
-  if(!shapedPositions||shapedPositions.length!==pos.length)shapedPositions=new Float32Array(pos.length);
+  if(!shapedPositions||shapedPositions.length!==pos.length)
+    shapedPositions=new Float32Array(pos);
   if(needPose||MOTION.has(state.pose)){
-    if(needShape)reconstructShape();
-    // shapedPositions records the body without articulation. It is refreshed
-    // only on an actual figure/face change.
+    // Evaluate joint kinematics once per frame, not once per vertex.
+    // This removes 19k repeated trigonometric evaluations on mobile.
+    const angles=poseAngles(t);
+    const v=[0,0,0];
     for(let i=0;i<pos.length;i+=3){
-      const v=[shapedPositions[i],shapedPositions[i+1],shapedPositions[i+2]];
-      const y=v[1],x=v[0],z=v[2];
+      v[0]=shapedPositions[i];v[1]=shapedPositions[i+1];v[2]=shapedPositions[i+2];
+      const y=v[1],x=v[0];
       if(y<1.09){
-        const side=x>=0?0:1,a=poseAngles(t)[side],sx=side===0?.096:-.096;
+        const side=x>=0?0:1,a=angles[side],sx=side===0?.096:-.096;
         const ankleWeight=1-sm(.085,.18,y);
         const kneeWeight=1-sm(.54,.69,y);
         const hipWeight=(1-sm(.92,1.105,y))*sm(.01,.085,Math.abs(x));
@@ -495,8 +495,10 @@ $('fbControls').addEventListener('input',e=>{
     const output=el.parentElement.querySelector('output');
     output.textContent=state[group][key]+(group==='figure'?(key==='height'?'cm':key==='weight'?'kg':'%'):'%');
     if(group==='hair')buildHair();
-    else if(group==='figure'){if(key==='height')updateRootPose();refreshShape();}
-    else if(group==='face')refreshShape();
+    else if(group==='figure'){
+      if(key==='height')model.scale.setScalar(num(state.figure.height,150,185)/165);
+      refreshShape();
+    }else if(group==='face')refreshShape();
   }else if(el.dataset.field){
     const key=el.dataset.field;
     state[key]=key==='stockings'?(el.value==='true'):key==='wet'?num(el.value,0,100)/100:Number(el.value);
