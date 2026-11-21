@@ -422,13 +422,18 @@ function createEngine({ stocking }) {
 
     const sheetOpen = !isWide && document.body.classList.contains('sheet-open');
     let verticalOffset = 0;
-    if (sheetOpen) {
-      const visibleSheet = document.body.classList.contains('mat-open')
-        ? document.getElementById('materials')
-        : document.getElementById('scenes');
-      const sheetTop = visibleSheet?.getBoundingClientRect().top ?? rect.bottom;
-      const visibleHeight = Math.max(height * .35, Math.min(rect.bottom, sheetTop) - rect.top);
-      verticalOffset = height * .5 - visibleHeight * .51;
+    if (!isWide) {
+      // The fixed bottom dock occludes the model; frame inside the visible canvas.
+      const dockTop = document.querySelector('.dock')?.getBoundingClientRect().top ?? rect.bottom;
+      let visibleBottom = Math.min(rect.bottom, dockTop);
+      if (sheetOpen) {
+        const visibleSheet = document.body.classList.contains('mat-open')
+          ? document.getElementById('materials')
+          : document.getElementById('scenes');
+        visibleBottom = Math.min(visibleBottom, visibleSheet?.getBoundingClientRect().top ?? rect.bottom);
+      }
+      const visibleHeight = Math.max(height * .32, visibleBottom - rect.top);
+      verticalOffset = THREE.MathUtils.clamp(height * .5 - visibleHeight * .5, 0, height * .16);
     }
     verticalProjectionOffset += (verticalOffset - verticalProjectionOffset) * follow;
     if (Math.abs(projectionLeft) > .05 || Math.abs(verticalProjectionOffset) > .05) {
