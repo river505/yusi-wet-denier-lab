@@ -2,7 +2,7 @@ import * as THREE from '../vendor/three.module.js';
 import { loadMesh } from './mesh.js';
 import { dropletFragment, dropletVertex, fabricFragment, fabricVertex, skinFragment, skinVertex, stageFragment, stageVertex, panoramaVertex, outlineVertex, outlineFragment } from './shaders.js';
 import { initUI } from './ui.js';
-import { applyPose, isMotionPose, isSeatedPose } from './pose.js';
+import { applyPose, isMotionPose, isSeatedPose, isLyingPose, clearMotionCache } from './pose.js';
 import { createSpatialEnvironment } from './environment.js';
 
 const canvas = document.getElementById('view');
@@ -35,7 +35,8 @@ const defaultLeg = { length: 'thigh', cuff: 'lace', material: 'sheer', denier: 4
 const restTarget = new THREE.Vector3(0, .43, .035);
 const maxStains = 24;
 const poses = ['single', 'together', 'step', 'crossed', 'tiptoe', 'point', 'pigeon',
-  'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick'];
+  'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick',
+  'lieFlat', 'lieBent', 'lieCrossLeft', 'lieCrossRight', 'lieSideLeft', 'lieSideRight'];
 
 function createSound() {
   let context;
@@ -358,7 +359,7 @@ function createEngine({ stocking }) {
   let rainClock = 0;
   let playClock = 0;
   let motionClock = 0, lastMotionUpdate = -Infinity;
-  let motionPlaying = true, motionSpeed = 1;
+  let motionPlaying = true, motionSpeed = 1, motionAmplitude = 1;
   const motionHz = {kick:.85,walk:1.18,run:1.85,sitBounce:2.5,sitCrossKick:1.05};
   let width = 1;
   let height = 1;
@@ -425,10 +426,10 @@ function createEngine({ stocking }) {
   }
 
   function placePose(phase=0) {
-    const seated=isSeatedPose(pose),moving=isMotionPose(pose);
+    const seated=isSeatedPose(pose),lying=isLyingPose(pose),moving=isMotionPose(pose);
     models.forEach(({ group, skinMesh, cloth, reflection, contact }, index) => {
-      applyPose(skinMesh.geometry,stocking,pose,index,phase);
-      const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase);
+      applyPose(skinMesh.geometry,stocking,pose,index,phase,motionAmplitude);
+      const {x,y,z,visible}=applyPose(cloth.geometry,stocking,pose,index,phase,motionAmplitude);
       group.position.set(x,y,z);
       group.visible=visible;
       group.updateMatrixWorld(true);
@@ -437,12 +438,12 @@ function createEngine({ stocking }) {
       contactProbe.set(p.getX(footVertex),p.getY(footVertex),p.getZ(footVertex));
       group.localToWorld(contactProbe);
       contact.position.set(contactProbe.x,.0032,contactProbe.z);
-      contact.visible=visible&&!belowGround&&contactProbe.y<.085;
+      contact.visible=visible&&!belowGround&&!lying&&contactProbe.y<.085;
       reflection.position.set(x,-y,z);
-      reflection.visible=visible&&!belowGround&&!seated&&!moving&&
+      reflection.visible=visible&&!belowGround&&!seated&&!lying&&!moving&&
         reflection.material.uniforms.reflection.value>0;
     });
-    floorShade.visible=!seated&&!moving&&!belowGround;
+    floorShade.visible=!seated&&!lying&&!moving&&!belowGround;
   }
   function setPose(name) {
     const next=poses.includes(name)?name:'step';
@@ -453,7 +454,7 @@ function createEngine({ stocking }) {
     placePose(0);
     // Static ground shadows are baked once. Animated and seated poses use
     // foot contact decals instead of a frozen standing silhouette.
-    if(!isMotionPose(pose)&&!isSeatedPose(pose)){
+    if(!isMotionPose(pose)&&!isSeatedPose(pose)&&!isLyingPose(pose)){
       if(!shadowCache.has(pose))shadowCache.set(pose,bakeFloorShadow(models));
       floorShade.material.map=shadowCache.get(pose);
       floorShade.material.needsUpdate=true;
@@ -461,10 +462,19 @@ function createEngine({ stocking }) {
   }
 
   function resetCamera() {
-    view.yaw = .62;
-    view.pitch = .10;
-    view.range = pose === 'single' ? 1.95 : 2;
-    view.target.copy(restTarget);
+    if(isLyingPose(pose)){
+      // Reclining rigs are anchored near the ground and extend along +Z.
+      // A high 3/4 view makes knee overlap and sidedness inspectable.
+      view.target.set(0,.24,.44);
+      view.yaw=.39;
+      view.pitch=.64;
+      view.range=1.88;
+    }else{
+      view.yaw = .62;
+      view.pitch = .10;
+      view.range = pose === 'single' ? 1.95 : 2;
+      view.target.copy(restTarget);
+    }
     lastInput = performance.now();
   }
   function focusToes(targetLeg = '-1') {
@@ -545,12 +555,9 @@ function createEngine({ stocking }) {
     if (nextBelowGround !== belowGround) {
       belowGround = nextBelowGround;
       spatialEnvironment.setUnderground(belowGround);
-      floorShade.visible = !belowGround && !isSeatedPose(pose) && !isMotionPose(pose);
-      models.forEach(({ contact, reflection, group }) => {
-        contact.visible = !belowGround && group.visible;
-        reflection.visible = !belowGround && group.visible &&
-          reflection.material.uniforms.reflection.value > 0;
-      });
+      // Reapply the current pose's contact/reflection policy. Simply toggling
+      // every decal back on revives fake shadows under reclining legs.
+      placePose(isMotionPose(pose)?motionClock*(motionHz[pose]||1):0);
     }
     const rect = canvas.getBoundingClientRect();
     const isWide = document.body.classList.contains('wide');
@@ -876,6 +883,13 @@ function createEngine({ stocking }) {
 
   return {
     setScene, setSkinAppearance, setMaterial, setPose, zoom, orbit, resetCamera, focusToes, bucket, dry, photo, thumbnail,
+    setMotionAmplitude(value) {
+      const next=THREE.MathUtils.clamp(Number(value)||1,.2,2);
+      if(Math.abs(next-motionAmplitude)<.0001)return;
+      motionAmplitude=next;
+      clearMotionCache();
+      if(isMotionPose(pose))placePose(motionClock*(motionHz[pose]||1));
+    },
     setMotionPlaying(value) { motionPlaying=Boolean(value); },
     setMotionSpeed(value) { motionSpeed=THREE.MathUtils.clamp(Number(value)||1,.5,2); },
     setMode(value) { mode = value; lastInput = performance.now(); },
