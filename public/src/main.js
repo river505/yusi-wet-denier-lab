@@ -36,7 +36,7 @@ const restTarget = new THREE.Vector3(0, .43, .035);
 const maxStains = 24;
 const poses = ['single', 'together', 'step', 'crossed', 'tiptoe', 'point', 'pigeon',
   'bendForward', 'bendTiptoe', 'tiptoeShake', 'bendTiptoeShake', 'sitNatural', 'sitReach', 'sitCross', 'kick', 'walk', 'run', 'sitBounce', 'sitCrossKick',
-  'lieFlat', 'lieBent', 'lieCrossLeft', 'lieCrossRight', 'lieSideLeft', 'lieSideRight'];
+  'lieFlat', 'lieBent', 'lieCrossLeft', 'lieCrossRight', 'lieSideLeft', 'lieSideRight', 'lieSpread'];
 
 function createSound() {
   // All water sounds are Web Audio noise synthesis. Tap keeps the upstream
