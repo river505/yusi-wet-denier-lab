@@ -25,13 +25,35 @@ const poses = {
     { x:.095, pitch:-80, knee:86, yaw:6, roll:2, shiftY:-.32 }],
   sitCross: [{ x:.095, pitch:-100, knee:62, yaw:-20, roll:40, shiftY:-.32 },
     { x:.095, pitch:-80, knee:87, yaw:8, roll:-5, shiftY:-.32 }],
+  // For reclining poses the hip is at y≈.15m; the legs extend into the
+  // common world +Z axis. These shifts were checked against the actual GLB
+  // bounds (including the foot), not estimated from knee/ankle alone.
+  lieFlat: [{x:.095,pitch:-90,yaw:4,shiftY:-.755},
+    {x:.095,pitch:-90,yaw:4,shiftY:-.755}],
+  lieBent: [{x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735},
+    {x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735}],
+  // The crossing foot ankle lies above the opposite raised knee. Use mirror
+  // transforms for left-/right-crossing rather than rotating the whole rig.
+  lieCrossLeft: [{x:.095,pitch:-200,knee:110,roll:-15,yaw:-70,shiftY:-.735},
+    {x:.095,pitch:-155,knee:155,yaw:4,shiftY:-.735}],
+  lieCrossRight: [{x:.095,pitch:-155,knee:155,yaw:-4,shiftY:-.735},
+    {x:.095,pitch:-200,knee:110,roll:15,yaw:70,shiftY:-.735}],
+  lieSideLeft: [{x:.095,pitch:-92,knee:7,roll:65,yaw:8,shiftY:-.77},
+    {x:.095,pitch:-97,knee:20,roll:65,yaw:5,shiftY:-.68}],
+  lieSideRight: [{x:.095,pitch:-97,knee:20,roll:-65,yaw:-5,shiftY:-.68},
+    {x:.095,pitch:-92,knee:7,roll:-65,yaw:-8,shiftY:-.77}],
 };
 const motionNames=new Set(['kick','walk','run','sitBounce','sitCrossKick']);
+const lyingNames=new Set(['lieFlat','lieBent','lieCrossLeft','lieCrossRight','lieSideLeft','lieSideRight']);
 const seatedNames=new Set(['sitNatural','sitReach','sitCross','sitBounce','sitCrossKick']);
 export const isMotionPose = name => motionNames.has(name);
 export const isSeatedPose = name => seatedNames.has(name);
+export const isLyingPose = name => lyingNames.has(name);
 const FRAME_COUNT=12;
-function motionConfigs(name, phase) {
+function motionConfigs(name, phase, amplitude=1) {
+  // One explicit amplitude parameter scales *excursions*, not the joint
+  // neutral pose. Both legs keep their anatomical hip/knee pivot positions.
+  const amp=Math.max(.2,Math.min(2,Number(amplitude)||1));
   const theta=phase*Math.PI*2;
   const swing=Math.sin(theta);
   const opposite=Math.sin(theta+Math.PI);
@@ -44,35 +66,35 @@ function motionConfigs(name, phase) {
       // the knee joint. Do not translate the kicking leg to keep its toes
       // on the floor: that old sole-height correction pulled the entire
       // limb downward at maximum extension.
-      {x:.095, pitch:-13-56*pulse, knee:15+24*(1-pulse), yaw:6, roll:-2},
+      {x:.095, pitch:-13-56*pulse*amp, knee:15+24*(1-pulse)*amp, yaw:6, roll:-2},
       {x:.095,pitch:0,knee:3,yaw:7,roll:-1},
     ];
   }
   if(name==='walk'||name==='run') {
     const speed=name==='run'?1.5:1.;
-    const amp=name==='run'?39:23;
+    const pitchExtent=(name==='run'?39:23)*amp;
     return [swing,opposite].map((value,i)=>({
-      x:.095, yaw:8, roll:(i?1:-1)*2, pitch:-amp*value,
-      knee:(name==='run'?13:5)+(name==='run'?57:38)*bend(value),
-      ankle:-(name==='run'?12:6)*value,
-      lift:(name==='run'?.065:.025)*bend(value),
-      z:(name==='run'?.035:.022)*value*speed,
+      x:.095, yaw:8, roll:(i?1:-1)*2, pitch:-pitchExtent*value,
+      knee:(name==='run'?13:5)+(name==='run'?57:38)*amp*bend(value),
+      ankle:-(name==='run'?12:6)*amp*value,
+      lift:(name==='run'?.065:.025)*amp*bend(value),
+      z:(name==='run'?.035:.022)*amp*value*speed,
     }));
   }
   if(name==='sitBounce') {
     const lift=Math.max(0,.5+.5*swing);
     return seated.map((cfg,i)=>({
       ...cfg,
-      knee:(cfg.knee||84)+ (i===0?9:6)*Math.sin(theta+(i?Math.PI*.45:0)),
-      ankle:-5+(i===0?10:6)*swing,
-      shiftY:-.32 + (i===0?.025:.010)*lift,
+      knee:(cfg.knee||84)+ (i===0?9:6)*amp*Math.sin(theta+(i?Math.PI*.45:0)),
+      ankle:-5+(i===0?10:6)*amp*swing,
+      shiftY:-.32 + (i===0?.025:.010)*amp*lift,
     }));
   }
   if(name==='sitCrossKick') {
     const pulse=.5-.5*Math.cos(theta);
     return [
-      {...poses.sitCross[0], pitch:-100-7*pulse,
-       knee:62-48*pulse, ankle:9*pulse},
+      {...poses.sitCross[0], pitch:-100-7*pulse*amp,
+       knee:Math.max(8,62-48*pulse*amp), ankle:9*pulse*amp},
       {...poses.sitCross[1]},
     ];
   }
@@ -144,10 +166,13 @@ function soleHeight(vertices, transform) {
   return minimum;
 }
 
-const resolved = new WeakMap();
+let resolved = new WeakMap();
+// Changing a dynamic amplitude invalidates its cached deformed keyframes;
+// keeping all slider values would accumulate large mesh buffers on mobile.
+export function clearMotionCache() { resolved = new WeakMap(); }
 const applied = new WeakMap();
 
-function resolvePose(restGeometry, name, frameIndex=0) {
+function resolvePose(restGeometry, name, frameIndex=0, amplitude=1) {
   let cache = resolved.get(restGeometry);
   if (!cache) {
     cache = new Map();
@@ -157,7 +182,7 @@ function resolvePose(restGeometry, name, frameIndex=0) {
   if (cache.has(key)) return cache.get(key);
   const vertices = restGeometry.attributes.position.array;
   const footLevel = restGeometry.boundingBox.min.y;
-  const configs=isMotionPose(name)?motionConfigs(name,frameIndex/FRAME_COUNT):poses[name];
+  const configs=isMotionPose(name)?motionConfigs(name,frameIndex/FRAME_COUNT,amplitude):poses[name];
   const second = makeTransform(configs[1]);
   let first = makeTransform(configs[0]);
 
@@ -221,13 +246,13 @@ function ensureSample(pose, rest) {
     pose.normals.set(transformNormal(pose.transform,point,p,n),off);
   }
 }
-export function applyPose(geometry, restGeometry, poseName, legIndex, phase=0) {
+export function applyPose(geometry, restGeometry, poseName, legIndex, phase=0, amplitude=1) {
   const name=(Object.hasOwn(poses,poseName)||isMotionPose(poseName))?poseName:'step';
   const animated=isMotionPose(name);
   const step=animated ? ((phase%1+1)%1)*FRAME_COUNT : 0;
   const first=Math.floor(step),next=(first+1)%FRAME_COUNT,t=step-first;
-  const pose=resolvePose(restGeometry,name,first)[legIndex];
-  const future=animated?resolvePose(restGeometry,name,next)[legIndex]:null;
+  const pose=resolvePose(restGeometry,name,first,amplitude)[legIndex];
+  const future=animated?resolvePose(restGeometry,name,next,amplitude)[legIndex]:null;
   const rest=restGeometry.attributes;
   ensureSample(pose,rest);
   if(future)ensureSample(future,rest);
